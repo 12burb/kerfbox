@@ -112,10 +112,13 @@ create index if not exists api_calls_key_created_idx
 --   2. If a future code path forgets the user_id filter, RLS will reject
 --      the query instead of leaking rows across tenants.
 --
--- Policy stance: deny-by-default to the anon role. Service role bypasses
--- RLS so the existing app traffic is unaffected. If/when we add direct
--- Supabase client access from the browser (we don't today — every read
--- is server-rendered or routed through /api), we'll layer in per-user
+-- Policy stance: deny-by-default to BOTH anon and authenticated roles.
+-- Service role bypasses RLS so the existing app traffic is unaffected.
+-- Why also deny `authenticated`? Today we don't issue Supabase-authenticated
+-- JWTs at all (auth lives in Clerk, and PostgREST is never used), but a
+-- future misstep — an anon-key Supabase client given a JWT, a sandbox env
+-- with auth.signInAnonymously() turned on, anything — must not silently
+-- gain row access. We'll relax these only when we deliberately wire scoped
 -- policies that match auth.jwt() -> user_id against the row owner.
 
 alter table briefs        enable row level security;
@@ -125,18 +128,23 @@ alter table api_calls     enable row level security;
 
 -- Idempotent policy creation: drop-then-create so re-running this file
 -- after a policy tweak doesn't error on "policy already exists."
-drop policy if exists briefs_deny_anon       on briefs;
-drop policy if exists copy_outputs_deny_anon on copy_outputs;
-drop policy if exists api_keys_deny_anon     on api_keys;
-drop policy if exists api_calls_deny_anon    on api_calls;
+drop policy if exists deny_all_anon          on briefs;
+drop policy if exists deny_all_authenticated on briefs;
+drop policy if exists deny_all_anon          on copy_outputs;
+drop policy if exists deny_all_authenticated on copy_outputs;
+drop policy if exists deny_all_anon          on api_keys;
+drop policy if exists deny_all_authenticated on api_keys;
+drop policy if exists deny_all_anon          on api_calls;
+drop policy if exists deny_all_authenticated on api_calls;
 
--- `using (false)` on the anon role means: no row is ever visible to
--- queries authenticated as anon (the public Supabase publishable key).
--- The service role used by getSupabaseServer() bypasses RLS and is
--- unaffected. Authenticated role (future Clerk-JWT-aware queries) is
--- intentionally NOT given a permissive policy here — we'll add scoped
--- policies when we actually wire client-side reads.
-create policy briefs_deny_anon       on briefs       for all to anon using (false) with check (false);
-create policy copy_outputs_deny_anon on copy_outputs for all to anon using (false) with check (false);
-create policy api_keys_deny_anon     on api_keys     for all to anon using (false) with check (false);
-create policy api_calls_deny_anon    on api_calls    for all to anon using (false) with check (false);
+-- `using (false) with check (false)` on a role means: no row visible, no
+-- write allowed, ever. The service role used by getSupabaseServer()
+-- bypasses RLS and is unaffected.
+create policy deny_all_anon          on briefs       for all to anon          using (false) with check (false);
+create policy deny_all_authenticated on briefs       for all to authenticated using (false) with check (false);
+create policy deny_all_anon          on copy_outputs for all to anon          using (false) with check (false);
+create policy deny_all_authenticated on copy_outputs for all to authenticated using (false) with check (false);
+create policy deny_all_anon          on api_keys     for all to anon          using (false) with check (false);
+create policy deny_all_authenticated on api_keys     for all to authenticated using (false) with check (false);
+create policy deny_all_anon          on api_calls    for all to anon          using (false) with check (false);
+create policy deny_all_authenticated on api_calls    for all to authenticated using (false) with check (false);

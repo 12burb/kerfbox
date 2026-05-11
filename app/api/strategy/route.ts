@@ -241,7 +241,7 @@ export async function POST(req: Request) {
   // user gets the same budget across IPs). Anonymous callers are keyed
   // by IP. Budget: 10 strategy runs per hour — a Kerf is expensive on
   // both wall-clock and dollars, and a real user iterates 2-3 times.
-  const rl = checkRateLimit(
+  const rl = await checkRateLimit(
     rateLimitKey({
       prefix: "strategy",
       userId: subject?.userId ?? null,

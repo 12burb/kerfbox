@@ -51,7 +51,7 @@ export async function GET(
     return NextResponse.json({ error: "Invalid id." }, { status: 400 });
   }
 
-  const rl = checkRateLimit(
+  const rl = await checkRateLimit(
     rateLimitKey({
       prefix: "briefs:get",
       userId: subject.userId,

@@ -46,7 +46,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Supabase not configured." }, { status: 503 });
   }
 
-  const rl = checkRateLimit(
+  const rl = await checkRateLimit(
     rateLimitKey({ prefix: "keys:list", userId, apiKeyId: null, req }),
     LIST_LIMIT_PER_HOUR,
     HOUR_MS
@@ -94,7 +94,7 @@ export async function POST(req: Request) {
   // Tight mint budget. Even with the 20-active-keys cap, a phished
   // session could spin mint+revoke loops to confuse audit logs —
   // 30/hr puts a hard ceiling on the noise.
-  const rl = checkRateLimit(
+  const rl = await checkRateLimit(
     rateLimitKey({ prefix: "keys:mint", userId, apiKeyId: null, req }),
     MINT_LIMIT_PER_HOUR,
     HOUR_MS

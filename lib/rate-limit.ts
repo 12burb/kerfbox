@@ -1,17 +1,22 @@
 /**
- * Sliding-window rate limiter.
+ * Sliding-window rate limiter with two backends:
  *
- * Per-instance only — Vercel serverless cold-starts mean each function
- * container gets its own counters. A motivated abuser hammering across
- * many cold containers can defeat this; that's an acceptable v0.2
- * tradeoff while we run without a shared store. The bucket is here so
- * a single-instance hot path (the common case) is protected from
- * runaway load and a misbehaving agent doesn't burn $$$ in BYOK calls
- * the customer didn't authorize.
+ *   1. In-memory bucket map (default). Per-instance only — Vercel cold
+ *      starts mean each container has its own counters, so a motivated
+ *      attacker can defeat this by spraying across cold containers. Cheap
+ *      and works zero-config; right for early environments and local dev.
  *
- * To upgrade: swap `inMemoryLimiter` for an Upstash-backed implementation
- * keyed off env (UPSTASH_REDIS_REST_URL / _TOKEN). The `RateLimit`
- * interface stays the same — call sites won't change.
+ *   2. Upstash REST (preferred, autodetected). Activates when either
+ *      UPSTASH_REDIS_REST_URL+UPSTASH_REDIS_REST_TOKEN or Vercel KV's
+ *      KV_REST_API_URL+KV_REST_API_TOKEN are present. Uses a per-key ZSET
+ *      with sliding-window semantics over Upstash's `/pipeline` endpoint
+ *      — one HTTP roundtrip per check. If the request fails or times out
+ *      we fall back to the in-memory check; fail-open with degraded
+ *      protection beats taking the API down on a limiter hiccup.
+ *
+ * The API is async to accommodate the network call. Call sites do
+ * `await checkRateLimit(...)`. When no Upstash env is set the awaited
+ * promise resolves synchronously off the in-memory path — no overhead.
  */
 export type RateLimitDecision = {
   allowed: boolean;
@@ -19,6 +24,8 @@ export type RateLimitDecision = {
   /** Remaining tokens in the current window — useful for response headers. */
   remaining: number;
 };
+
+// ---- in-memory backend -----------------------------------------------------
 
 type Bucket = {
   /** Timestamps (ms) of recent hits, oldest first. */
@@ -44,12 +51,7 @@ function evictIfNeeded(now: number, windowMs: number) {
   }
 }
 
-/**
- * Check whether `key` is under its budget for the window. Records the hit
- * if allowed. Returns the decision plus retry-after for the caller to
- * surface as a header.
- */
-export function checkRateLimit(
+function inMemoryCheck(
   key: string,
   limit: number,
   windowMs: number
@@ -71,6 +73,162 @@ export function checkRateLimit(
   bucket.hits.push(now);
   BUCKETS.set(key, bucket);
   return { allowed: true, retryAfterSeconds: 0, remaining: limit - bucket.hits.length };
+}
+
+// ---- Upstash REST backend --------------------------------------------------
+
+type UpstashCfg = { url: string; token: string };
+
+function readUpstashConfig(): UpstashCfg | null {
+  const url =
+    process.env.UPSTASH_REDIS_REST_URL ||
+    process.env.KV_REST_API_URL ||
+    "";
+  const token =
+    process.env.UPSTASH_REDIS_REST_TOKEN ||
+    process.env.KV_REST_API_TOKEN ||
+    "";
+  if (!url || !token) return null;
+  // Strip trailing slash so we can compose `${url}/pipeline` without
+  // double-slashing the path. Upstash tolerates it; we don't want to
+  // depend on that.
+  return { url: url.replace(/\/+$/, ""), token };
+}
+
+/** Cached so repeated checks don't re-walk process.env per call. */
+let UPSTASH_CFG: UpstashCfg | null | undefined;
+function upstashConfig(): UpstashCfg | null {
+  if (UPSTASH_CFG !== undefined) return UPSTASH_CFG;
+  UPSTASH_CFG = readUpstashConfig();
+  return UPSTASH_CFG;
+}
+
+/**
+ * Cap the limiter's latency budget. If Upstash is degraded, we'd rather
+ * fall back to in-memory than make every request hang. 1.5s is well above
+ * normal Upstash REST latency (sub-50ms in-region) and still snappy enough
+ * that aborting won't add visible UX delay.
+ */
+const UPSTASH_TIMEOUT_MS = 1500;
+
+type PipelineEntry = { result?: unknown; error?: string };
+
+async function upstashCheck(
+  cfg: UpstashCfg,
+  key: string,
+  limit: number,
+  windowMs: number
+): Promise<RateLimitDecision> {
+  const now = Date.now();
+  // Unique member so two hits with identical millisecond timestamps don't
+  // collapse into one ZSET entry.
+  const member = `${now}-${Math.random().toString(36).slice(2, 10)}`;
+  const ttlSeconds = Math.max(1, Math.ceil(windowMs / 1000));
+
+  // Pipeline (single roundtrip):
+  //   1. Drop expired entries (anything older than the window).
+  //   2. ZADD this hit.
+  //   3. ZCARD for the count after the add.
+  //   4. ZRANGE 0 0 WITHSCORES to read the oldest entry's score
+  //      (so we can compute Retry-After on denial).
+  //   5. EXPIRE to keep the key bounded; otherwise inactive keys would
+  //      stick around forever on the cluster.
+  const body = JSON.stringify([
+    ["ZREMRANGEBYSCORE", key, 0, now - windowMs],
+    ["ZADD", key, now, member],
+    ["ZCARD", key],
+    ["ZRANGE", key, 0, 0, "WITHSCORES"],
+    ["EXPIRE", key, ttlSeconds],
+  ]);
+
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), UPSTASH_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${cfg.url}/pipeline`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${cfg.token}`,
+        "Content-Type": "application/json",
+      },
+      body,
+      signal: controller.signal,
+      // No-store because this is hot-path state, not cacheable.
+      cache: "no-store",
+    });
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+  if (!res.ok) throw new Error(`upstash ${res.status}`);
+
+  const payload = (await res.json()) as PipelineEntry[];
+  if (!Array.isArray(payload) || payload.length < 5) {
+    throw new Error("upstash: unexpected pipeline shape");
+  }
+  const card = Number(payload[2]?.result ?? 0);
+  const rangeResult = payload[3]?.result;
+  // ZRANGE WITHSCORES returns [member, score] pairs flattened. We asked
+  // for one entry, so the array length is 2 (or 0 if the key is empty).
+  let oldestScore = now;
+  if (Array.isArray(rangeResult) && rangeResult.length >= 2) {
+    const score = Number(rangeResult[1]);
+    if (Number.isFinite(score)) oldestScore = score;
+  }
+
+  if (card > limit) {
+    // We already added our hit above — roll it back so the queue length
+    // matches the semantics of the in-memory limiter (denied hits don't
+    // accumulate). Fire-and-forget; failures are fine because the entry
+    // will TTL out regardless.
+    void fetch(
+      `${cfg.url}/zrem/${encodeURIComponent(key)}/${encodeURIComponent(member)}`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${cfg.token}` },
+        cache: "no-store",
+      }
+    ).catch(() => {});
+    const retryAfterSeconds = Math.max(
+      1,
+      Math.ceil((oldestScore + windowMs - now) / 1000)
+    );
+    return { allowed: false, retryAfterSeconds, remaining: 0 };
+  }
+
+  return {
+    allowed: true,
+    retryAfterSeconds: 0,
+    remaining: Math.max(0, limit - card),
+  };
+}
+
+// ---- public API ------------------------------------------------------------
+
+/**
+ * Check whether `key` is under its budget for the window. Records the hit
+ * if allowed. Returns the decision plus retry-after for the caller to
+ * surface as a header.
+ *
+ * Async because the Upstash backend is HTTP. Resolves synchronously when
+ * Upstash env is unset (in-memory path).
+ */
+export async function checkRateLimit(
+  key: string,
+  limit: number,
+  windowMs: number
+): Promise<RateLimitDecision> {
+  const cfg = upstashConfig();
+  if (!cfg) return inMemoryCheck(key, limit, windowMs);
+  try {
+    return await upstashCheck(cfg, key, limit, windowMs);
+  } catch (err) {
+    // Fail-open with the in-memory backend. We still get *some* protection
+    // even if Upstash is unreachable, and we avoid taking down the API
+    // when our limiter dependency hiccups.
+    // eslint-disable-next-line no-console
+    console.warn("[rate-limit] upstash failed, falling back to in-memory:", err);
+    return inMemoryCheck(key, limit, windowMs);
+  }
 }
 
 /**

@@ -44,7 +44,7 @@ export async function POST(req: Request) {
   // Copy is cheaper per-call than strategy but a typical session
   // generates 7 (one per calendar entry). Budget: 60 / hour — covers
   // 8 full calendars in an hour with headroom for retries.
-  const rl = checkRateLimit(
+  const rl = await checkRateLimit(
     rateLimitKey({
       prefix: "copy",
       userId: subject?.userId ?? null,

@@ -42,7 +42,7 @@ export async function DELETE(
     return NextResponse.json({ error: "Invalid id." }, { status: 400 });
   }
 
-  const rl = checkRateLimit(
+  const rl = await checkRateLimit(
     rateLimitKey({ prefix: "keys:revoke", userId, apiKeyId: null, req }),
     REVOKE_LIMIT_PER_HOUR,
     HOUR_MS

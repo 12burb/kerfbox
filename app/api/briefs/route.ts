@@ -66,7 +66,7 @@ export async function GET(req: Request) {
     );
   }
 
-  const rl = checkRateLimit(
+  const rl = await checkRateLimit(
     rateLimitKey({
       prefix: "briefs:list",
       userId: subject.userId,
@@ -131,7 +131,7 @@ export async function POST(req: Request) {
   if (csrf) return csrf;
 
   // Rate limit AFTER auth so we key on identity rather than IP-only.
-  const rl = checkRateLimit(
+  const rl = await checkRateLimit(
     rateLimitKey({
       prefix: "briefs:save",
       userId: subject.userId,

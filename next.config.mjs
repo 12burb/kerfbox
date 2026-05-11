@@ -20,12 +20,24 @@
  * CSP is the trickier one. Next.js inlines bootstrap scripts at build time
  * which need a runtime-generated nonce to be CSP-strict. Adding nonce
  * propagation correctly is a fluid-compute refactor (it has to happen in
- * middleware and thread through every Server Component render) and that's
- * a separate PR. Until then, the CSP here is a `frame-ancestors 'none'`
- * minimum — it shores up clickjacking defense without blocking the
- * unhashed inline bootstrap. We do NOT set a default-src; doing so would
- * either need 'unsafe-inline' (defeating the point) or nonce wiring (the
- * PR we're deferring). The other four headers are doing the heavy lifting.
+ * middleware and thread through every Server Component render — and the
+ * landing page is `force-static` so middleware doesn't run there) — that's
+ * a separate PR.
+ *
+ * Until then we ship the directives that don't need a nonce but still add
+ * real defense-in-depth:
+ *   - `frame-ancestors 'none'` — clickjacking
+ *   - `base-uri 'self'` — kill `<base href="evil">` injection that would
+ *     reroute relative URLs through an attacker-controlled origin
+ *   - `form-action 'self'` — POST-able forms can't be exfiltrated to a
+ *     third-party endpoint via injected `<form action>`
+ *   - `object-src 'none'` — no `<object>`, `<embed>`, Flash, etc.
+ *   - `upgrade-insecure-requests` — auto-upgrade any stray http://
+ *     subresource references to https
+ *
+ * We don't set `default-src`, `script-src`, or `style-src` yet — those
+ * would need 'unsafe-inline' to coexist with Next's inline bootstrap, which
+ * defeats the point. Coming back for them with the nonce PR.
  */
 const SECURITY_HEADERS = [
   { key: "X-Frame-Options", value: "DENY" },
@@ -45,9 +57,18 @@ const SECURITY_HEADERS = [
       "usb=()",
     ].join(", "),
   },
-  // Minimum CSP: just frame-ancestors. See block comment above for why
-  // we're not setting default-src yet.
-  { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+  // Nonce-free CSP directives. See block comment above for why script-src
+  // / default-src / style-src aren't here yet.
+  {
+    key: "Content-Security-Policy",
+    value: [
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "object-src 'none'",
+      "upgrade-insecure-requests",
+    ].join("; "),
+  },
 ];
 
 const nextConfig = {

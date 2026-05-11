@@ -1,0 +1,50 @@
+{
+  "name": "@kerfbox/mcp",
+  "version": "0.2.0",
+  "description": "MCP server for kerf.box — cut the narrow defensible kerf between where a category clusters and where this brand can stand alone.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "kerfbox-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.5.0"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "marketing",
+    "strategy",
+    "anthropic",
+    "claude",
+    "kerf",
+    "kerfbox"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "homepage": "https://cmoinabox.vercel.app",
+  "bugs": {
+    "url": "https://github.com/12burb/cmoinabox/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/12burb/cmoinabox.git",
+    "directory": "packages/mcp"
+  }
+}

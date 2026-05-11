@@ -4,8 +4,19 @@ import { getSupabaseServer } from "@/lib/supabase";
 import { currentUserIdOrNull } from "@/lib/auth";
 import { generateApiKey, KNOWN_SCOPES, DEFAULT_SCOPES } from "@/lib/api-keys";
 import { authenticate, csrfGuard, dbError } from "@/lib/api-auth";
+import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
+
+// Key-management endpoints are session-only (no Bearer auth — you can't
+// bootstrap a key with a key). Rate limits are tight on POST because key
+// minting is the only credentialed-write surface a phished session could
+// abuse — even with the 20-active cap, an attacker could mint+revoke in
+// a loop. 30 mints/hour is comfortable for a human revising labels;
+// listing is 240/hour for the /app/keys UI's polling and refreshes.
+const LIST_LIMIT_PER_HOUR = 240;
+const MINT_LIMIT_PER_HOUR = 30;
+const HOUR_MS = 60 * 60 * 1000;
 
 const ScopeEnum = z.enum(KNOWN_SCOPES);
 
@@ -27,12 +38,24 @@ const CreateKeyRequest = z.object({
  * Auth: Clerk session ONLY (this endpoint manages keys; you can't bootstrap
  * a key with a key).
  */
-export async function GET() {
+export async function GET(req: Request) {
   const userId = await currentUserIdOrNull();
   if (!userId) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
   const supabase = getSupabaseServer();
   if (!supabase) {
     return NextResponse.json({ error: "Supabase not configured." }, { status: 503 });
+  }
+
+  const rl = checkRateLimit(
+    rateLimitKey({ prefix: "keys:list", userId, apiKeyId: null, req }),
+    LIST_LIMIT_PER_HOUR,
+    HOUR_MS
+  );
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: `Rate limit exceeded. Retry in ${rl.retryAfterSeconds}s.` },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } }
+    );
   }
 
   const { data, error } = await supabase
@@ -67,6 +90,21 @@ export async function POST(req: Request) {
   const subject = await authenticate(req);
   const csrf = csrfGuard(req, subject);
   if (csrf) return csrf;
+
+  // Tight mint budget. Even with the 20-active-keys cap, a phished
+  // session could spin mint+revoke loops to confuse audit logs —
+  // 30/hr puts a hard ceiling on the noise.
+  const rl = checkRateLimit(
+    rateLimitKey({ prefix: "keys:mint", userId, apiKeyId: null, req }),
+    MINT_LIMIT_PER_HOUR,
+    HOUR_MS
+  );
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: `Rate limit exceeded. Retry in ${rl.retryAfterSeconds}s.` },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } }
+    );
+  }
 
   const supabase = getSupabaseServer();
   if (!supabase) {

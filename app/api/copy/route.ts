@@ -6,44 +6,10 @@ import { buildCopyMessages } from "@/lib/prompts";
 import { DEMO_COPY } from "@/lib/demo";
 import { authenticate, attemptedAuth, hasScope, logApiCall, sanitizeForLog } from "@/lib/api-auth";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
+import { extractJsonObject } from "@/lib/json-extract";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
-
-/**
- * Pull the first balanced JSON object out of a model response. See
- * `/api/strategy/route.ts` for full rationale — same scanner.
- */
-function extractJsonObject(s: string): string | null {
-  const stripped = s.replace(/```json\s*|\s*```/g, "");
-  let depth = 0;
-  let start = -1;
-  let inStr = false;
-  let escape = false;
-  for (let i = 0; i < stripped.length; i++) {
-    const ch = stripped[i];
-    if (inStr) {
-      if (escape) escape = false;
-      else if (ch === "\\") escape = true;
-      else if (ch === '"') inStr = false;
-      continue;
-    }
-    if (ch === '"') {
-      inStr = true;
-      continue;
-    }
-    if (ch === "{") {
-      if (depth === 0) start = i;
-      depth++;
-    } else if (ch === "}") {
-      depth--;
-      if (depth === 0 && start !== -1) {
-        return stripped.slice(start, i + 1);
-      }
-    }
-  }
-  return null;
-}
 
 /**
  * POST /api/copy

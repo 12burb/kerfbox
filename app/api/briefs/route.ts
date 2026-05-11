@@ -3,22 +3,42 @@ import { z } from "zod";
 import { KerfSchema, BriefSchema } from "@/lib/schema";
 import { getSupabaseServer } from "@/lib/supabase";
 import { authenticate, csrfGuard, hasScope, logApiCall, dbError } from "@/lib/api-auth";
+import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 
 // Accept either `kerf` (v0.2) or `brief` (v0.1 legacy alias). Exactly one
 // must be present. The wire shape is enforced at the schema layer; the
 // row in Supabase always lands in `brief_json` regardless.
+//
+// Length + scheme caps on url/audience mirror StrategyRequestSchema in
+// lib/schema.ts so a caller can't bypass our prompt-input limits by
+// posting straight to /api/briefs with a 100KB blob to fatten brief_json.
 const SaveRequest = z
   .object({
-    url: z.string().min(1),
-    audience: z.string().min(1),
+    url: z
+      .string()
+      .min(1)
+      .max(2000)
+      .url()
+      .refine((u) => /^https?:\/\//i.test(u), { message: "http(s) only" }),
+    audience: z.string().min(1).max(500),
     kerf: KerfSchema.optional(),
     brief: BriefSchema.optional(),
   })
   .refine((d) => !!d.kerf !== !!d.brief, {
     message: "Provide exactly one of `kerf` (v0.2) or `brief` (v0.1 legacy).",
   });
+
+// Rate budgets. The persistence endpoints are cheap compared to the
+// inference routes (no model call), but we still want to bound them
+// against scrape/spam: a misbehaving agent listing 100×/sec adds DB
+// load and surfaces every brief in the user's archive to its memory
+// for no good reason. 120/hour = 2 RPS sustained, plenty for a real
+// archive UI; saves are even lower volume in practice.
+const LIST_LIMIT_PER_HOUR = 120;
+const SAVE_LIMIT_PER_HOUR = 60;
+const HOUR_MS = 60 * 60 * 1000;
 
 /**
  * GET /api/briefs — list the caller's saved briefs (newest first, max 50).
@@ -46,6 +66,23 @@ export async function GET(req: Request) {
     );
   }
 
+  const rl = checkRateLimit(
+    rateLimitKey({
+      prefix: "briefs:list",
+      userId: subject.userId,
+      apiKeyId: subject.apiKeyId ?? null,
+      req,
+    }),
+    LIST_LIMIT_PER_HOUR,
+    HOUR_MS
+  );
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: `Rate limit exceeded. Retry in ${rl.retryAfterSeconds}s.` },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } }
+    );
+  }
+
   const { data, error } = await supabase
     .from("briefs")
     .select("id, url, audience, brief_json, created_at")
@@ -68,7 +105,7 @@ export async function GET(req: Request) {
  * POST /api/briefs — save a brief to the caller's archive.
  *
  * Auth: Clerk session OR API key with scope `briefs:write`.
- * Body: { url, audience, brief }
+ * Body: { url, audience, kerf } (or legacy `brief`)
  * Returns: { id }
  */
 export async function POST(req: Request) {
@@ -92,6 +129,24 @@ export async function POST(req: Request) {
   // SameSite=Lax. No-op for API-key callers (they don't use cookies).
   const csrf = csrfGuard(req, subject);
   if (csrf) return csrf;
+
+  // Rate limit AFTER auth so we key on identity rather than IP-only.
+  const rl = checkRateLimit(
+    rateLimitKey({
+      prefix: "briefs:save",
+      userId: subject.userId,
+      apiKeyId: subject.apiKeyId ?? null,
+      req,
+    }),
+    SAVE_LIMIT_PER_HOUR,
+    HOUR_MS
+  );
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: `Rate limit exceeded. Retry in ${rl.retryAfterSeconds}s.` },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } }
+    );
+  }
 
   const supabase = getSupabaseServer();
   if (!supabase) {

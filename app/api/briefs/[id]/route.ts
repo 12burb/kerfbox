@@ -1,8 +1,23 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase";
 import { authenticate, hasScope, logApiCall, dbError } from "@/lib/api-auth";
+import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
+
+// RFC-4122 UUID matcher (any version). Failing the shape check returns
+// a fast 400 instead of:
+//   - shipping the malformed id to Postgres (which would 22P02 it for us
+//     anyway, but at the cost of a round trip + a `dbError` 500), or
+//   - eating a real DB lookup for an obviously-bogus id from a scraper
+//     hammering /api/briefs/[anything]. The shape check is ~free.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Read budget for individual brief lookups. A real user clicking through
+// their archive might fetch a handful per session; agents listing then
+// fanning out for detail want headroom too. 240/hour = 4 RPS sustained.
+const READ_LIMIT_PER_HOUR = 240;
+const HOUR_MS = 60 * 60 * 1000;
 
 /**
  * GET /api/briefs/:id — fetch one saved brief by id (caller-scoped).
@@ -28,6 +43,28 @@ export async function GET(
     return NextResponse.json(
       { error: "API key missing required scope: briefs:read" },
       { status: 403 }
+    );
+  }
+
+  if (!UUID_RE.test(id)) {
+    void logApiCall({ subject, endpoint: "/api/briefs/:id", status: 400, durationMs: Date.now() - startedAt, byok: false });
+    return NextResponse.json({ error: "Invalid id." }, { status: 400 });
+  }
+
+  const rl = checkRateLimit(
+    rateLimitKey({
+      prefix: "briefs:get",
+      userId: subject.userId,
+      apiKeyId: subject.apiKeyId ?? null,
+      req,
+    }),
+    READ_LIMIT_PER_HOUR,
+    HOUR_MS
+  );
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: `Rate limit exceeded. Retry in ${rl.retryAfterSeconds}s.` },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds) } }
     );
   }
 

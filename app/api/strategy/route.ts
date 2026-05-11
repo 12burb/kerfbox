@@ -5,6 +5,7 @@ import { buildKerfMessages } from "@/lib/prompts";
 import { DEMO_KERF } from "@/lib/demo";
 import { authenticate, attemptedAuth, hasScope, logApiCall, sanitizeForLog, type AuthSubject } from "@/lib/api-auth";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
+import { extractJsonObject } from "@/lib/json-extract";
 
 export const runtime = "nodejs";
 // Live web-search + Sonnet synthesis can occasionally exceed 60s on slow
@@ -29,46 +30,6 @@ const DEMO_STEPS: Array<{ label: string; finding?: string }> = [
 
 function sseLine(event: SSEEvent): string {
   return `data: ${JSON.stringify(event)}\n\n`;
-}
-
-/**
- * Pull the first balanced JSON object out of a model response. The
- * naive `replace(/```json|```/g)` + JSON.parse pipeline failed when the
- * model occasionally emitted preamble text or trailing commentary
- * around the JSON, even with "OUTPUT: Return ONLY raw JSON" in the
- * prompt. Brace-counting is dumb but robust — and because string
- * literals can contain `{`/`}`, the scanner has to track string state
- * and escape sequences. Returns null when no balanced object is found.
- */
-function extractJsonObject(s: string): string | null {
-  const stripped = s.replace(/```json\s*|\s*```/g, "");
-  let depth = 0;
-  let start = -1;
-  let inStr = false;
-  let escape = false;
-  for (let i = 0; i < stripped.length; i++) {
-    const ch = stripped[i];
-    if (inStr) {
-      if (escape) escape = false;
-      else if (ch === "\\") escape = true;
-      else if (ch === '"') inStr = false;
-      continue;
-    }
-    if (ch === '"') {
-      inStr = true;
-      continue;
-    }
-    if (ch === "{") {
-      if (depth === 0) start = i;
-      depth++;
-    } else if (ch === "}") {
-      depth--;
-      if (depth === 0 && start !== -1) {
-        return stripped.slice(start, i + 1);
-      }
-    }
-  }
-  return null;
 }
 
 /**

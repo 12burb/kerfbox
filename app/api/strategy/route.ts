@@ -97,8 +97,11 @@ function sanitizeStreamError(err: unknown): string {
  * A Kerf is only valid if its wedge.moat names at least one competitor
  * from cluster_map and gives a non-trivial structural reason. If the
  * moat is empty, generic, or doesn't reference a real competitor, we
- * refuse to ship — better a 422 than undefendable strategy. The user
- * sees exactly why so they can re-run or pick a sharper input.
+ * refuse to ship — better an in-stream `error` event than undefendable
+ * strategy. (The HTTP response is already 200 by the time we validate
+ * because the SSE stream opened on the first byte; clients branch on
+ * the SSE event `type`, not the status code.) The user sees exactly
+ * why so they can re-run or pick a sharper input.
  *
  * Returns null on pass, or a refusal message on fail.
  */
@@ -161,10 +164,23 @@ async function runLiveStream(
   let currentLabel: string | null = null;
 
   const { system, user } = buildKerfMessages(url, audience);
+  // System prompt is ~4KB of stable instructions — well past the 1024-token
+  // floor that makes prompt caching pay off, and identical across every
+  // strategy call. Pass it as a content-block array with `cache_control:
+  // ephemeral` so Anthropic serves cached prefix tokens at ~10% of the
+  // input cost for the next 5 minutes. Cache lookup is keyed on the full
+  // prefix, so callers hitting the same instance back-to-back (the common
+  // case: a user iterating on /app) get the discount automatically.
   const stream = client.messages.stream({
     model: STRATEGY_MODEL,
-    max_tokens: 4000,
-    system,
+    // 8000 leaves headroom for: 7-day calendar × ~600 tokens, 3 concepts ×
+    // ~250, cluster_map + wedge + signals with citations. 4000 was hitting
+    // the cap occasionally on rich brands and clipping the last calendar
+    // entries, which then failed KerfSchema's `.length(7)` check.
+    max_tokens: 8000,
+    system: [
+      { type: "text", text: system, cache_control: { type: "ephemeral" } },
+    ] as unknown as Anthropic.TextBlockParam[],
     tools: [
       { type: "web_search_20250305", name: "web_search" },
     ] as unknown as Anthropic.Tool[],

@@ -1,3 +1,4 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { CopyRequestSchema, CopySchema } from "@/lib/schema";
 import { extractByokKey, getAnthropic, hasAnthropicKey, COPY_MODEL } from "@/lib/anthropic";
@@ -144,10 +145,17 @@ export async function POST(req: Request) {
   try {
     const client = getAnthropic(byokKey);
     const { system, user } = buildCopyMessages(entry, kerf);
+    // System prompt is stable across the ~7 calls a session makes
+    // (one per calendar entry). Cache it so we only pay full-rate
+    // input cost on the first call within the 5-minute TTL — Haiku
+    // is already cheap, but the prompt-caching discount stacks and
+    // the cache lookup is free.
     const response = await client.messages.create({
       model: COPY_MODEL,
       max_tokens: 1500,
-      system,
+      system: [
+        { type: "text", text: system, cache_control: { type: "ephemeral" } },
+      ] as unknown as Anthropic.TextBlockParam[],
       messages: [{ role: "user", content: user }],
     });
 

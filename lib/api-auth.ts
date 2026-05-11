@@ -174,16 +174,28 @@ export function csrfGuard(req: Request, subject: AuthSubject | null): NextRespon
   if (!origin) {
     return NextResponse.json({ error: "Origin header required." }, { status: 403 });
   }
+  // Compare *hostnames* — not hosts. Browsers send the Origin header
+  // without a port for default ports (80/443), but Host / x-forwarded-host
+  // may or may not include the port depending on the proxy chain. A naive
+  // `host === host` comparison would 403 a perfectly legitimate same-origin
+  // request the moment any layer normalizes differently (e.g. dev server
+  // on :3000 served via a tunnel that strips the port). Stripping to
+  // hostname matches what browsers themselves treat as "same origin"
+  // for CSRF purposes.
   let originHost: string;
   try {
-    originHost = new URL(origin).host;
+    originHost = new URL(origin).hostname;
   } catch {
     return NextResponse.json({ error: "Invalid Origin header." }, { status: 403 });
   }
-  // Trust x-forwarded-host (set by Vercel) over Host so we don't choke
-  // behind the proxy. Both should match the user-facing domain.
-  const expectedHost = req.headers.get("x-forwarded-host") || req.headers.get("host");
-  if (!expectedHost || originHost !== expectedHost) {
+  const rawExpected = req.headers.get("x-forwarded-host") || req.headers.get("host");
+  if (!rawExpected) {
+    return NextResponse.json({ error: "Cross-origin request rejected." }, { status: 403 });
+  }
+  // Strip the port from the expected host. `new URL()` won't accept a
+  // bare "example.com:3000", so do it by hand.
+  const expectedHost = rawExpected.split(":")[0].toLowerCase();
+  if (originHost.toLowerCase() !== expectedHost) {
     return NextResponse.json({ error: "Cross-origin request rejected." }, { status: 403 });
   }
   return null;

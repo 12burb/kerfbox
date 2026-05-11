@@ -4,15 +4,25 @@ import { z } from "zod";
  * Shared primitives
  * ============================================================ */
 
+// Allowlist http(s) only. Zod's .url() accepts javascript: and data: schemes
+// which would let a model-emitted citation become an XSS vector the moment
+// we render it as an <a href>. Belt-and-suspenders alongside any sanitization
+// in lib/export.ts (the markdown escape for parens lives there).
+const httpUrl = z
+  .string()
+  .url()
+  .max(2000)
+  .refine((u) => /^https?:\/\//i.test(u), { message: "http(s) only" });
+
 export const CitationSchema = z.object({
-  title: z.string(),
-  url: z.string().url(),
+  title: z.string().min(1).max(200),
+  url: httpUrl,
 });
 
 export const SignalSchema = z.object({
-  source: z.string(),
-  finding: z.string(),
-  citations: z.array(CitationSchema).optional().default([]),
+  source: z.string().min(1).max(200),
+  finding: z.string().min(1).max(2000),
+  citations: z.array(CitationSchema).max(20).optional().default([]),
 });
 
 /* ============================================================
@@ -27,51 +37,62 @@ export const SignalSchema = z.object({
  *
  * Refusal rule (enforced in /api/strategy): wedge.moat MUST reference
  * at least one named competitor from cluster_map. If it doesn't, the
- * route returns 422. The refusal is the brand POV expressed in code.
+ * route emits an SSE `error` event (the stream is already open at the
+ * moment of validation, so the HTTP status is 200 even on refusal —
+ * clients should branch on the in-band event type, not the HTTP code).
+ * The refusal is the brand POV expressed in code.
  * ============================================================ */
 
+// Length caps applied to every string field: cheap insurance against a
+// runaway model (or hostile input via the BYOK MCP path) blowing up
+// downstream renderers, exceeding our 8000-token cap, or filling the
+// briefs.brief_json blob with megabytes of garbage. The caps are loose
+// enough that legitimate output is never clipped — they exist to refuse
+// pathological output, not to shape it.
+
 export const ClusterSchema = z.object({
-  cluster: z.string().min(1),
+  cluster: z.string().min(1).max(200),
   // Named competitors / examples that occupy this cluster. Min 2 because
   // a "cluster" of one is just a competitor — we need to show convergence.
-  examples: z.array(z.string().min(1)).min(2),
-  pattern: z.string().min(1),
+  // Max 20 because anything more is a list-vomit failure mode, not strategy.
+  examples: z.array(z.string().min(1).max(120)).min(2).max(20),
+  pattern: z.string().min(1).max(500),
 });
 
 export const KerfCutSchema = z.object({
   // The cut: a single-sentence statement of what's between the clusters
   // and why it's reachable for THIS brand specifically.
-  cut: z.string().min(1),
-  why_now: z.string().min(1),
+  cut: z.string().min(1).max(500),
+  why_now: z.string().min(1).max(500),
 });
 
 export const WedgeSchema = z.object({
   // The claim that fits inside the kerf. One sentence, taglinable.
-  claim: z.string().min(1),
+  claim: z.string().min(1).max(280),
   // Proof the brand can legitimately make this claim. 2+ items.
-  proof: z.array(z.string().min(1)).min(2),
+  proof: z.array(z.string().min(1).max(500)).min(2).max(10),
   // Structural moat: WHY competitors can't simply copy. Must reference a
   // named competitor and explain the structural reason. Validated in route.
-  moat: z.string().min(1),
+  moat: z.string().min(1).max(2000),
 });
 
 export const ConceptSchema = z.object({
-  id: z.string().min(1),
+  id: z.string().min(1).max(40),
   // 3-char floor stops the model from emitting placeholder names like "X" or "—".
-  name: z.string().min(3),
+  name: z.string().min(3).max(120),
   // How this concept embodies the wedge. Required — kills free-floating ideas.
-  embodies_wedge: z.string().min(1),
-  why_now: z.string(),
-  hook: z.string(),
+  embodies_wedge: z.string().min(1).max(500),
+  why_now: z.string().max(500),
+  hook: z.string().max(500),
 });
 
 export const CalendarEntrySchema = z.object({
-  day: z.string().min(1),
-  time: z.string().min(1),
-  platform: z.string().min(1),
-  concept_id: z.string().min(1),
-  post_idea: z.string().min(1),
-  rationale: z.string().min(1),
+  day: z.string().min(1).max(40),
+  time: z.string().min(1).max(40),
+  platform: z.string().min(1).max(40),
+  concept_id: z.string().min(1).max(40),
+  post_idea: z.string().min(1).max(500),
+  rationale: z.string().min(1).max(500),
 });
 
 /**
@@ -87,11 +108,11 @@ export const CalendarEntrySchema = z.object({
  */
 export const KerfSchema = z
   .object({
-    company_summary: z.string().min(1),
-    cluster_map: z.array(ClusterSchema).min(1),
+    company_summary: z.string().min(1).max(2000),
+    cluster_map: z.array(ClusterSchema).min(1).max(10),
     kerf: KerfCutSchema,
     wedge: WedgeSchema,
-    signals: z.array(SignalSchema),
+    signals: z.array(SignalSchema).max(20),
     concepts: z.array(ConceptSchema).length(3),
     calendar: z.array(CalendarEntrySchema).length(7),
   })
@@ -118,11 +139,11 @@ export const KerfSchema = z
   });
 
 export const CopySchema = z.object({
-  hook: z.string(),
-  caption: z.string(),
-  visual_direction: z.string(),
-  hashtags: z.array(z.string()),
-  cta: z.string(),
+  hook: z.string().max(500),
+  caption: z.string().max(2000),
+  visual_direction: z.string().max(1000),
+  hashtags: z.array(z.string().max(60)).max(30),
+  cta: z.string().max(200),
 });
 
 /* ============================================================
@@ -179,9 +200,15 @@ export type Brief = z.infer<typeof BriefSchema>;
  * Request shapes
  * ============================================================ */
 
+// Input caps:
+//   url      — 2000 chars is comfortably above the practical browser URL
+//              limit (Chrome ~2083) but stops a hostile caller from posting
+//              a megabyte payload to chew through our prompt budget.
+//   audience — 500 chars is ~80 words; everything past that is verbosity,
+//              not signal, and dilutes the prompt.
 export const StrategyRequestSchema = z.object({
-  url: z.string().min(1),
-  audience: z.string().min(1),
+  url: z.string().min(1).max(2000).url(),
+  audience: z.string().min(1).max(500),
 });
 
 export const CopyRequestSchema = z.object({

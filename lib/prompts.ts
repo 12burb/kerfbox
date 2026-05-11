@@ -7,7 +7,9 @@ import type { Kerf, CalendarEntry } from "./schema";
  * clusters and where this brand can legitimately stand alone. The
  * model's job is not to summarize a brand, not to pick a vibe — it's
  * to *find the cut*. If it can't find a defensible moat, the route
- * downstream rejects the output (422) rather than ship slop.
+ * downstream rejects the output (via an in-stream `error` SSE event —
+ * the HTTP status is already 200 by the time we validate) rather than
+ * ship slop.
  *
  * Injection hardening: the user-controlled `url` and `audience` fields
  * are wrapped in XML-style tags inside the user message, with explicit

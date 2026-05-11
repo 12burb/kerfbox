@@ -35,18 +35,30 @@ export default async function ArchivePage() {
 
   let rows: Row[] = [];
   let emptyMessage: string | null = null;
+  let dbErrored = false;
   if (!supabase) {
     emptyMessage = "Persistence not configured. Add Supabase env vars to see saved kerfs.";
   } else if (!userId) {
     emptyMessage = "Sign in required. Configure Clerk to view your saved kerfs.";
   } else {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("briefs")
       .select("id, url, audience, brief_json, created_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(50);
-    rows = (data as Row[] | null) ?? [];
+    // A failed read previously masqueraded as "No kerfs yet" — the worst
+    // possible UX for a paying user staring at what looks like a wiped
+    // archive. Render a distinct error state and log server-side. We
+    // deliberately don't surface the raw Postgres message: that can
+    // include schema hints (column names, constraint names) and is
+    // useless to the user anyway.
+    if (error) {
+      console.error("[/briefs] supabase select failed", error);
+      dbErrored = true;
+    } else {
+      rows = (data as Row[] | null) ?? [];
+    }
   }
 
   return (
@@ -90,6 +102,13 @@ export default async function ArchivePage() {
             style={{ color: MUTED }}
           >
             {emptyMessage}
+          </div>
+        ) : dbErrored ? (
+          <div
+            className="mono text-xs uppercase tracking-widest py-16 text-center"
+            style={{ color: ACCENT }}
+          >
+            Archive temporarily unavailable. Refresh in a moment, or check status.
           </div>
         ) : rows.length === 0 ? (
           <div

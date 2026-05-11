@@ -1,6 +1,34 @@
 import type { Kerf } from "./schema";
 
 /**
+ * Escape characters that would break out of a markdown inline-link's
+ * label `[...]` or URL `(...)`. Citations come from the model and are
+ * validated by CitationSchema (http(s) only, length-capped), but the
+ * model still occasionally emits titles containing brackets, or URLs
+ * with un-encoded parens (Wikipedia is a frequent offender). Without
+ * escaping, a stray `]` collapses the label and a stray `)` truncates
+ * the URL — and worse, the trailing text leaks into surrounding prose
+ * as plain markdown.
+ *
+ * For URLs we percent-encode `(` and `)` rather than backslash-escape
+ * because the latter isn't honored by every renderer (notably GitHub).
+ * For labels we escape with backslashes per CommonMark §6.1.
+ */
+function mdEscapeLinkLabel(s: string): string {
+  return s
+    .replace(/\\/g, "\\\\")
+    .replace(/\[/g, "\\[")
+    .replace(/\]/g, "\\]")
+    .replace(/\r?\n/g, " ");
+}
+function mdEscapeLinkUrl(s: string): string {
+  return s
+    .replace(/\(/g, "%28")
+    .replace(/\)/g, "%29")
+    .replace(/\s+/g, "%20");
+}
+
+/**
  * Render a Kerf as a markdown document suitable for dropping into Notion,
  * Linear, or a static-site post.
  *
@@ -71,7 +99,7 @@ export function kerfToMarkdown(kerf: Kerf, meta?: { url?: string; audience?: str
       lines.push(`- **${f.source}:** ${f.finding}`);
       if (f.citations && f.citations.length > 0) {
         for (const c of f.citations) {
-          lines.push(`  - [${c.title}](${c.url})`);
+          lines.push(`  - [${mdEscapeLinkLabel(c.title)}](${mdEscapeLinkUrl(c.url)})`);
         }
       }
     }

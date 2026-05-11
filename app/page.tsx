@@ -1,11 +1,20 @@
 import Link from "next/link";
+import dynamicImport from "next/dynamic";
 import AuthButtons from "@/components/cmo/AuthButtons";
-import DemoCarousel from "@/components/cmo/DemoCarousel";
 import { ACCENT, ACCENT_DIM, BG_2, MUTED } from "@/components/cmo/shared";
 
 // Keep static — the demo carousel is client-rendered but the rest of
 // the page is hydration-light marketing content.
 export const dynamic = "force-static";
+
+// Code-split the demo carousel out of the landing route's main bundle.
+// It's below the fold, only interactive after scroll, and pulls in
+// KerfStage + all the demo data — none of which the LCP needs. Loading
+// it dynamically (ssr: true so the static HTML still contains the
+// rendered first demo, no layout shift) shrinks the initial JS payload
+// without changing the first paint. Imported under an aliased name so
+// it doesn't shadow the route's `export const dynamic` flag above.
+const DemoCarousel = dynamicImport(() => import("@/components/cmo/DemoCarousel"));
 
 export default function LandingPage() {
   return (
@@ -283,10 +292,11 @@ export default function LandingPage() {
                 </div>
                 <div className="mt-5" style={{ color: ACCENT }}># or call the http api directly</div>
                 <div className="mt-2" style={{ color: "#f5f1e8", whiteSpace: "pre-wrap" }}>
-                  {`curl -N https://kerf.box/api/strategy \\
+                  {`curl -N https://cmoinabox.vercel.app/api/strategy \\
   -H "Authorization: Bearer cmo_live_..." \\
   -H "X-Anthropic-Key: sk-ant-..." \\
-  -d '{"url":"...","audience":"..."}'`}
+  -H "Content-Type: application/json" \\
+  -d '{"url":"https://linear.app","audience":"indie SaaS founders"}'`}
                 </div>
               </div>
             </div>

@@ -98,3 +98,45 @@ create index if not exists api_calls_user_created_idx
 
 create index if not exists api_calls_key_created_idx
   on api_calls (api_key_id, created_at desc);
+
+------------------------------------------------------------------------
+-- Row-Level Security (defense in depth)
+------------------------------------------------------------------------
+-- All app traffic goes through the Supabase service-role key from our
+-- Next.js server, which bypasses RLS — so under normal operation the
+-- app-layer `.eq("user_id", userId)` filters in lib/supabase.ts ARE the
+-- authorization boundary. RLS here is the second line of defense:
+--   1. If anything ever exposes the anon key (an accidental NEXT_PUBLIC_*
+--      leak, a misconfigured edge function, a future PostgREST endpoint),
+--      we don't want every row in `briefs`/`api_keys` to be world-readable.
+--   2. If a future code path forgets the user_id filter, RLS will reject
+--      the query instead of leaking rows across tenants.
+--
+-- Policy stance: deny-by-default to the anon role. Service role bypasses
+-- RLS so the existing app traffic is unaffected. If/when we add direct
+-- Supabase client access from the browser (we don't today — every read
+-- is server-rendered or routed through /api), we'll layer in per-user
+-- policies that match auth.jwt() -> user_id against the row owner.
+
+alter table briefs        enable row level security;
+alter table copy_outputs  enable row level security;
+alter table api_keys      enable row level security;
+alter table api_calls     enable row level security;
+
+-- Idempotent policy creation: drop-then-create so re-running this file
+-- after a policy tweak doesn't error on "policy already exists."
+drop policy if exists briefs_deny_anon       on briefs;
+drop policy if exists copy_outputs_deny_anon on copy_outputs;
+drop policy if exists api_keys_deny_anon     on api_keys;
+drop policy if exists api_calls_deny_anon    on api_calls;
+
+-- `using (false)` on the anon role means: no row is ever visible to
+-- queries authenticated as anon (the public Supabase publishable key).
+-- The service role used by getSupabaseServer() bypasses RLS and is
+-- unaffected. Authenticated role (future Clerk-JWT-aware queries) is
+-- intentionally NOT given a permissive policy here — we'll add scoped
+-- policies when we actually wire client-side reads.
+create policy briefs_deny_anon       on briefs       for all to anon using (false) with check (false);
+create policy copy_outputs_deny_anon on copy_outputs for all to anon using (false) with check (false);
+create policy api_keys_deny_anon     on api_keys     for all to anon using (false) with check (false);
+create policy api_calls_deny_anon    on api_calls    for all to anon using (false) with check (false);

@@ -112,8 +112,9 @@ export default function AppPage() {
     // 120s watchdog. The route's own maxDuration is 90s; client side we
     // give it a 30s grace window for cold-start + handshake before we
     // give up. Reset on every event so a slow-but-progressing stream
-    // doesn't trip it. Server-side 422 refusals come through as `error`
-    // events well before this timer fires.
+    // doesn't trip it. Server-side moat refusals come through as in-stream
+    // `error` events (HTTP status is already 200 by then) well before
+    // this timer fires.
     let watchdog: ReturnType<typeof setTimeout> | null = null;
     const armWatchdog = () => {
       if (watchdog) clearTimeout(watchdog);
@@ -150,9 +151,10 @@ export default function AppPage() {
             apiMsg ?? "Authentication failed — paste a fresh Anthropic key or try demo mode."
           );
         }
-        if (res.status === 422) {
-          throw new Error(apiMsg ?? "Kerf rejected — try a sharper audience or different brand.");
-        }
+        // No `if (res.status === 422)` branch here: /api/strategy opens
+        // the SSE stream on the first byte, so by the time we'd know
+        // whether the moat refusal hit, the HTTP status is already 200
+        // and the rejection arrives as an in-stream `error` event below.
         if (res.status === 429) {
           throw new Error("Rate limit hit — wait a moment, then retry.");
         }
@@ -164,14 +166,14 @@ export default function AppPage() {
         throw new Error(apiMsg ?? `API returned ${res.status}.`);
       }
 
-      // SSE done flag: once we've banked the kerf event, ignore any
-      // subsequent events. The route should close after `kerf` but a
-      // misbehaving relay (Vercel proxy retry, browser stream replay
-      // under back-pressure) could in theory replay an earlier event.
+      // SSE termination: the `kerf` event is terminal. Break out of the
+      // for-await so the async iterator's `return()` runs, releasing the
+      // reader lock and letting the underlying fetch close. (We don't
+      // abort the controller — that would also abort the post-kerf
+      // animation loop below which checks `controller.signal.aborted`.)
       let finalKerf: Kerf | null = null;
       for await (const event of readSSE(res, controller.signal)) {
         armWatchdog();
-        if (finalKerf) continue;
         if (event.type === "step") {
           setResearchSteps((prev) => {
             const last = prev[prev.length - 1];
@@ -188,6 +190,7 @@ export default function AppPage() {
           });
         } else if (event.type === "kerf") {
           finalKerf = event.kerf;
+          break;
         } else if (event.type === "error") {
           throw new Error(event.message);
         }

@@ -38,7 +38,7 @@
   "engines": {
     "node": ">=18.17"
   },
-  "homepage": "https://cmoinabox.vercel.app",
+  "homepage": "https://kerfbox.vercel.app",
   "bugs": {
     "url": "https://github.com/12burb/cmoinabox/issues"
   },

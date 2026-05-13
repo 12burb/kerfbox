@@ -28,7 +28,7 @@ export function GET(req: Request) {
         "kerf between clusters, and ship a wedge with a structural moat — or surface " +
         "an in-stream `error` SSE event if the moat doesn't hold. Designed to be " +
         "called by AI agents (via MCP or directly) as well as the kerf.box web app.",
-      contact: { name: "kerf.box", url: "https://cmoinabox.vercel.app" },
+      contact: { name: "kerf.box", url: "https://kerfbox.vercel.app" },
       // OpenAPI 3.1 prefers SPDX `identifier` over the older `name`-only form.
       license: { name: "MIT", identifier: "MIT" },
     },

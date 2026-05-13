@@ -292,7 +292,7 @@ export default function LandingPage() {
                 </div>
                 <div className="mt-5" style={{ color: ACCENT }}># or call the http api directly</div>
                 <div className="mt-2" style={{ color: "#f5f1e8", whiteSpace: "pre-wrap" }}>
-                  {`curl -N https://cmoinabox.vercel.app/api/strategy \\
+                  {`curl -N https://kerfbox.vercel.app/api/strategy \\
   -H "Authorization: Bearer cmo_live_..." \\
   -H "X-Anthropic-Key: sk-ant-..." \\
   -H "Content-Type: application/json" \\

@@ -9,14 +9,14 @@
  * pay Anthropic directly instead of consuming the kerf.box quota.
  *
  * Required env (either name works — KERFBOX_* takes precedence):
- *   KERFBOX_API_KEY   — issued from https://cmoinabox.vercel.app/app/keys
+ *   KERFBOX_API_KEY   — issued from https://kerfbox.vercel.app/app/keys
  *   CMOBOX_API_KEY    — legacy alias, still honored
  *
  * Optional env:
  *   ANTHROPIC_API_KEY — your own Anthropic key. When set, inference uses it
  *                       (BYOK) and you pay Anthropic directly.
  *   KERFBOX_BASE_URL  — override for self-hosted or staging; defaults to
- *                       https://cmoinabox.vercel.app
+ *                       https://kerfbox.vercel.app
  *   CMOBOX_BASE_URL   — legacy alias.
  */
 import { readFileSync } from "node:fs";
@@ -34,11 +34,20 @@ import { CallToolRequestSchema, ListToolsRequestSchema, } from "@modelcontextpro
 const PKG = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf8"));
 const BASE_URL = process.env.KERFBOX_BASE_URL ??
     process.env.CMOBOX_BASE_URL ??
-    "https://cmoinabox.vercel.app";
+    "https://kerfbox.vercel.app";
 const API_KEY = process.env.KERFBOX_API_KEY ?? process.env.CMOBOX_API_KEY;
-const BYOK = process.env.ANTHROPIC_API_KEY;
+// BYOK: prefer the namespaced env (KERFBOX_BYOK_ANTHROPIC_KEY) so this
+// server doesn't collide with an unrelated Anthropic key the user has
+// in their global env for some other tool. Fall back to the bare name
+// for back-compat — but emit a one-time warning so users migrate.
+const BYOK = process.env.KERFBOX_BYOK_ANTHROPIC_KEY ?? process.env.ANTHROPIC_API_KEY;
+if (!process.env.KERFBOX_BYOK_ANTHROPIC_KEY && process.env.ANTHROPIC_API_KEY) {
+    process.stderr.write("[kerfbox-mcp] using ANTHROPIC_API_KEY — please rename to " +
+        "KERFBOX_BYOK_ANTHROPIC_KEY in your MCP host config to avoid " +
+        "colliding with other tools that read ANTHROPIC_API_KEY.\n");
+}
 const MISSING_KEY_HINT = "KERFBOX_API_KEY (or legacy CMOBOX_API_KEY) is not set. Issue one at " +
-    "https://cmoinabox.vercel.app/app/keys and add it to the `env` block of " +
+    "https://kerfbox.vercel.app/app/keys and add it to the `env` block of " +
     "your MCP host config (Claude Desktop, Cursor, etc.), then restart.";
 // Surface the warning early so a developer running the server interactively
 // sees it on stderr. We do NOT exit here — exiting kills the transport
@@ -152,11 +161,10 @@ async function cutKerf(args) {
     return kerf;
 }
 async function generateCopy(args) {
-    // Normalize: backend prefers `kerf`, but accepts `brief` as legacy alias.
-    // We forward whichever the caller passed, defaulting to `kerf`.
-    const body = args.kerf !== undefined
-        ? { kerf: args.kerf, entry: args.entry, demo: args.demo }
-        : { brief: args.brief, entry: args.entry, demo: args.demo };
+    // /api/copy in v0.2 only accepts `kerf` — there's no legacy alias on
+    // this route. The Zod schema below rejects callers who pass `brief`
+    // before we get here.
+    const body = { kerf: args.kerf, entry: args.entry, demo: args.demo };
     const res = await fetch(`${BASE_URL}/api/copy`, {
         method: "POST",
         headers: authHeaders(),
@@ -212,17 +220,14 @@ const CutKerfArgs = z.object({
     audience: z.string().min(1, "audience is required"),
     demo: z.boolean().optional(),
 });
-const GenerateCopyArgs = z
-    .object({
-    // Prefer kerf; brief is legacy alias. Backend re-validates the full
-    // shape against KerfSchema, so we just require an object here.
-    kerf: z.record(z.string(), z.unknown()).optional(),
-    brief: z.record(z.string(), z.unknown()).optional(),
+const GenerateCopyArgs = z.object({
+    // Only `kerf` is accepted in v0.2 — the /api/copy backend dropped the
+    // legacy `brief` alias, so forwarding one would return 400. If a v0.1
+    // caller still passes `brief`, this Zod check produces a cleaner error
+    // than a confusing backend 400.
+    kerf: z.record(z.string(), z.unknown()),
     entry: z.record(z.string(), z.unknown()),
     demo: z.boolean().optional(),
-})
-    .refine((d) => !!d.kerf !== !!d.brief, {
-    message: "Provide exactly one of `kerf` (preferred) or `brief` (legacy alias).",
 });
 const GetKerfArgs = z.object({
     id: z.string().min(1, "id is required"),
@@ -292,10 +297,6 @@ const TOOLS = [
                     type: "object",
                     description: "The full Kerf object returned by cut_kerf.",
                 },
-                brief: {
-                    type: "object",
-                    description: "(Deprecated alias for `kerf`. Provide exactly one of kerf or brief.)",
-                },
                 entry: {
                     type: "object",
                     description: "The calendar entry you want copy for. Must include day, time, platform, concept_id, post_idea, rationale.",
@@ -306,7 +307,7 @@ const TOOLS = [
                     default: false,
                 },
             },
-            required: ["entry"],
+            required: ["kerf", "entry"],
         },
     },
     {

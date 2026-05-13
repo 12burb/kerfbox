@@ -1,6 +1,6 @@
 # @kerfbox/mcp
 
-MCP server for [kerf.box](https://cmoinabox.vercel.app) — strategy is a cut, not a story.
+MCP server for [kerf.box](https://kerfbox.vercel.app) — strategy is a cut, not a story.
 
 This is the **agentic-as-a-service** entrypoint. Your agent (Claude Desktop,
 Cursor, Continue, custom Agent SDK build, or anything MCP-aware) connects to
@@ -38,7 +38,7 @@ output is schema-validated JSON — no string-parsing, no hallucinated URLs.
 
 You need an API key from kerf.box:
 
-1. Sign in at https://cmoinabox.vercel.app
+1. Sign in at https://kerfbox.vercel.app
 2. Go to **/app/keys** (or call `POST /api/keys` with `{ name }`)
 3. Copy the `cmo_live_...` key (shown once, store it in your password manager)
 
@@ -127,7 +127,7 @@ against your plan's monthly quota.
 | ------------------------------- | -------- | ------------------------------------------------------------- |
 | `KERFBOX_API_KEY`               | yes      | API key issued at /app/keys (`cmo_live_...`)                  |
 | `KERFBOX_BYOK_ANTHROPIC_KEY`    | no       | Your Anthropic key for BYOK billing                           |
-| `KERFBOX_BASE_URL`              | no       | Override the API base (default: https://cmoinabox.vercel.app) |
+| `KERFBOX_BASE_URL`              | no       | Override the API base (default: https://kerfbox.vercel.app) |
 | `CMOBOX_API_KEY` (legacy)       | no       | Alias for `KERFBOX_API_KEY`                                   |
 | `ANTHROPIC_API_KEY` (legacy)    | no       | Alias for `KERFBOX_BYOK_ANTHROPIC_KEY` (warns on use)         |
 | `CMOBOX_BASE_URL` (legacy)      | no       | Alias for `KERFBOX_BASE_URL`                                  |

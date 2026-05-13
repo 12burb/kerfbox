@@ -11,7 +11,7 @@ import type { MetadataRoute } from "next";
  * we don't ship CRUD docs on a sign-in page.
  */
 export default function robots(): MetadataRoute.Robots {
-  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "https://cmoinabox.vercel.app";
+  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "https://kerfbox.vercel.app";
   return {
     rules: [
       {

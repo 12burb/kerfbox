@@ -9,14 +9,14 @@
  * pay Anthropic directly instead of consuming the kerf.box quota.
  *
  * Required env (either name works — KERFBOX_* takes precedence):
- *   KERFBOX_API_KEY   — issued from https://cmoinabox.vercel.app/app/keys
+ *   KERFBOX_API_KEY   — issued from https://kerfbox.vercel.app/app/keys
  *   CMOBOX_API_KEY    — legacy alias, still honored
  *
  * Optional env:
  *   ANTHROPIC_API_KEY — your own Anthropic key. When set, inference uses it
  *                       (BYOK) and you pay Anthropic directly.
  *   KERFBOX_BASE_URL  — override for self-hosted or staging; defaults to
- *                       https://cmoinabox.vercel.app
+ *                       https://kerfbox.vercel.app
  *   CMOBOX_BASE_URL   — legacy alias.
  */
 
@@ -46,7 +46,7 @@ const PKG = JSON.parse(
 const BASE_URL =
   process.env.KERFBOX_BASE_URL ??
   process.env.CMOBOX_BASE_URL ??
-  "https://cmoinabox.vercel.app";
+  "https://kerfbox.vercel.app";
 const API_KEY = process.env.KERFBOX_API_KEY ?? process.env.CMOBOX_API_KEY;
 // BYOK: prefer the namespaced env (KERFBOX_BYOK_ANTHROPIC_KEY) so this
 // server doesn't collide with an unrelated Anthropic key the user has
@@ -63,7 +63,7 @@ if (!process.env.KERFBOX_BYOK_ANTHROPIC_KEY && process.env.ANTHROPIC_API_KEY) {
 
 const MISSING_KEY_HINT =
   "KERFBOX_API_KEY (or legacy CMOBOX_API_KEY) is not set. Issue one at " +
-  "https://cmoinabox.vercel.app/app/keys and add it to the `env` block of " +
+  "https://kerfbox.vercel.app/app/keys and add it to the `env` block of " +
   "your MCP host config (Claude Desktop, Cursor, etc.), then restart.";
 
 // Surface the warning early so a developer running the server interactively

@@ -9,14 +9,14 @@
  * pay Anthropic directly instead of consuming the kerf.box quota.
  *
  * Required env (either name works — KERFBOX_* takes precedence):
- *   KERFBOX_API_KEY   — issued from https://cmoinabox.vercel.app/app/keys
+ *   KERFBOX_API_KEY   — issued from https://kerfbox.vercel.app/app/keys
  *   CMOBOX_API_KEY    — legacy alias, still honored
  *
  * Optional env:
  *   ANTHROPIC_API_KEY — your own Anthropic key. When set, inference uses it
  *                       (BYOK) and you pay Anthropic directly.
  *   KERFBOX_BASE_URL  — override for self-hosted or staging; defaults to
- *                       https://cmoinabox.vercel.app
+ *                       https://kerfbox.vercel.app
  *   CMOBOX_BASE_URL   — legacy alias.
  */
 export {};

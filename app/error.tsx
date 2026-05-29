@@ -15,9 +15,11 @@
 import { useEffect } from "react";
 import Link from "next/link";
 
-const ACCENT = "#ff7a3d";
-const ACCENT_DIM = "#8a4a2a";
-const MUTED = "#9a8e75";
+// Brand palette — keep in lockstep with components/cmo/shared.ts and
+// app/globals.css. Red accent, not the legacy orange.
+const ACCENT = "#ff1744";
+const ACCENT_DIM = "#8a0a22";
+const MUTED = "#7a7a82";
 
 export default function GlobalErrorBoundary({
   error,

@@ -4,7 +4,7 @@ import { CopyRequestSchema, CopySchema } from "@/lib/schema";
 import { extractByokKey, getAnthropic, hasAnthropicKey, COPY_MODEL } from "@/lib/anthropic";
 import { buildCopyMessages } from "@/lib/prompts";
 import { DEMO_COPY } from "@/lib/demo";
-import { authenticate, attemptedAuth, hasScope, logApiCall, sanitizeForLog } from "@/lib/api-auth";
+import { authenticate, attemptedAuth, enforceBodyLimit, hasScope, logApiCall, sanitizeForLog } from "@/lib/api-auth";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { extractJsonObject } from "@/lib/json-extract";
 
@@ -23,6 +23,8 @@ export const maxDuration = 30;
  */
 export async function POST(req: Request) {
   const startedAt = Date.now();
+  const tooLarge = enforceBodyLimit(req);
+  if (tooLarge) return tooLarge;
   const subject = await authenticate(req);
   const isApiKeyCall = subject?.via === "api_key";
 
@@ -67,7 +69,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "kerf and entry are required." }, { status: 400 });
   }
   const { kerf, entry } = parsed.data;
-  const demoRequested = body && typeof body === "object" && body.demo === true;
+  // Demo is anonymous-only; API-key callers never get canned copy. Read off
+  // the validated shape rather than the raw parsed body.
+  const demoRequested = !isApiKeyCall && parsed.data.demo === true;
   const byokKey = extractByokKey(req);
   const noKeyAvailable = !byokKey && !hasAnthropicKey();
 

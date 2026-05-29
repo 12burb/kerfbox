@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase";
 import { currentUserIdOrNull } from "@/lib/auth";
 import { generateApiKey, KNOWN_SCOPES, DEFAULT_SCOPES } from "@/lib/api-keys";
-import { authenticate, csrfGuard, dbError } from "@/lib/api-auth";
+import { csrfGuard, dbError, enforceBodyLimit } from "@/lib/api-auth";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -82,13 +82,16 @@ const MAX_ACTIVE_KEYS_PER_USER = 20;
  * Returns: { id, key, prefix, name, scopes, created_at }
  */
 export async function POST(req: Request) {
+  const tooLarge = enforceBodyLimit(req, 8_192); // names+scopes are tiny
+  if (tooLarge) return tooLarge;
   const userId = await currentUserIdOrNull();
   if (!userId) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-  // CSRF guard. /api/keys is session-only (you can't bootstrap a key
-  // with a key), so the Origin check applies to every request that
-  // gets past auth.
-  const subject = await authenticate(req);
-  const csrf = csrfGuard(req, subject);
+  // CSRF guard. /api/keys is session-only (you can't bootstrap a key with a
+  // key), so authorize on the session id and force a session subject into
+  // the guard. Deriving the subject from authenticate() would let an
+  // attached `Authorization: Bearer` header flip `via` to "api_key" and
+  // silently skip the Origin check on this state-changing endpoint.
+  const csrf = csrfGuard(req, { userId, via: "session" });
   if (csrf) return csrf;
 
   // Tight mint budget. Even with the 20-active-keys cap, a phished

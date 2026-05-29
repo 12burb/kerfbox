@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase";
 import { currentUserIdOrNull } from "@/lib/auth";
-import { authenticate, csrfGuard, dbError } from "@/lib/api-auth";
+import { csrfGuard, dbError } from "@/lib/api-auth";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -33,9 +33,12 @@ export async function DELETE(
   const { id } = await params;
   const userId = await currentUserIdOrNull();
   if (!userId) return NextResponse.json({ error: "Not authenticated." }, { status: 401 });
-  // CSRF — DELETE is a state change. Same rationale as /api/keys POST.
-  const subject = await authenticate(req);
-  const csrf = csrfGuard(req, subject);
+  // CSRF — DELETE is a state change. Same rationale as /api/keys POST:
+  // this endpoint is session-only, so force a session subject into the
+  // guard rather than deriving it from authenticate(). Otherwise an
+  // attached `Authorization: Bearer` header could flip `via` to "api_key"
+  // and silently skip the Origin check on a destructive operation.
+  const csrf = csrfGuard(req, { userId, via: "session" });
   if (csrf) return csrf;
 
   if (!UUID_RE.test(id)) {

@@ -3,7 +3,7 @@ import { StrategyRequestSchema, KerfSchema, type SSEEvent, type Kerf } from "@/l
 import { extractByokKey, getAnthropic, hasAnthropicKey, STRATEGY_MODEL } from "@/lib/anthropic";
 import { buildKerfMessages } from "@/lib/prompts";
 import { DEMO_KERF } from "@/lib/demo";
-import { authenticate, attemptedAuth, hasScope, logApiCall, sanitizeForLog, type AuthSubject } from "@/lib/api-auth";
+import { authenticate, attemptedAuth, enforceBodyLimit, hasScope, logApiCall, sanitizeForLog, type AuthSubject } from "@/lib/api-auth";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { extractJsonObject } from "@/lib/json-extract";
 
@@ -222,6 +222,9 @@ async function runLiveStream(
  */
 export async function POST(req: Request) {
   const startedAt = Date.now();
+  // Reject oversized payloads before any parse/inference work.
+  const tooLarge = enforceBodyLimit(req);
+  if (tooLarge) return tooLarge;
   const subject: AuthSubject | null = await authenticate(req);
   const isApiKeyCall = subject?.via === "api_key";
 
@@ -270,7 +273,10 @@ export async function POST(req: Request) {
     return jsonResponse(400, { error: "url and audience are required." });
   }
   const { url, audience } = parsed.data;
-  const demoRequested = body && typeof body === "object" && body.demo === true;
+  // Demo is for the anonymous on-ramp only. API-key callers must never get
+  // canned content when they believe they asked for live inference — they
+  // hit the 503 below instead. Read off the validated shape, not raw body.
+  const demoRequested = !isApiKeyCall && parsed.data.demo === true;
   const byokKey = extractByokKey(req);
   const noKeyAvailable = !byokKey && !hasAnthropicKey();
 

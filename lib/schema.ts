@@ -207,13 +207,23 @@ export type Brief = z.infer<typeof BriefSchema>;
 //   audience — 500 chars is ~80 words; everything past that is verbosity,
 //              not signal, and dilutes the prompt.
 export const StrategyRequestSchema = z.object({
-  url: z.string().min(1).max(2000).url(),
+  // Reuse the shared http(s)-only primitive. A bare `.url()` here would
+  // accept `javascript:`, `data:`, `file:`, and internal `http://169.254…`
+  // schemes — the exact SSRF/XSS hole the `httpUrl` refine (and its comment
+  // above) exists to close. This is the primary user-controlled input on
+  // the most powerful route, so it must not be weaker than CitationSchema.
+  url: httpUrl,
   audience: z.string().min(1).max(500),
+  // Optional demo flag. Declared here so it's part of the validated shape
+  // instead of being read off raw `any`. API-key callers are gated off the
+  // demo path in the route regardless of this value.
+  demo: z.boolean().optional(),
 });
 
 export const CopyRequestSchema = z.object({
   kerf: KerfSchema,
   entry: CalendarEntrySchema,
+  demo: z.boolean().optional(),
 });
 
 export type StrategyRequest = z.infer<typeof StrategyRequestSchema>;

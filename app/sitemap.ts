@@ -1,20 +1,16 @@
 import type { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/site";
 
 /**
- * Only the public landing page is indexed. Everything else is either
- * auth-gated or user-scoped and shouldn't appear in a sitemap. If we
- * add public marketing pages (e.g. /method, /pricing, /changelog),
- * append them here.
+ * Public, indexable routes only. The app, archive, and per-user/API routes
+ * are auth-gated or user-scoped and stay out of the sitemap (and are
+ * disallowed in robots.ts). Add new public marketing pages here.
  */
 export default function sitemap(): MetadataRoute.Sitemap {
-  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "https://kerfbox.vercel.app";
   const now = new Date();
   return [
-    {
-      url: `${base}/`,
-      lastModified: now,
-      changeFrequency: "weekly",
-      priority: 1.0,
-    },
+    { url: `${SITE_URL}/`, lastModified: now, changeFrequency: "weekly", priority: 1.0 },
+    { url: `${SITE_URL}/privacy`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
+    { url: `${SITE_URL}/terms`, lastModified: now, changeFrequency: "yearly", priority: 0.3 },
   ];
 }

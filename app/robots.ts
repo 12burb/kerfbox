@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { SITE_URL } from "@/lib/site";
 
 /**
  * Crawler policy. The marketing surface (`/`) is allow-all; everything
@@ -11,7 +12,7 @@ import type { MetadataRoute } from "next";
  * we don't ship CRUD docs on a sign-in page.
  */
 export default function robots(): MetadataRoute.Robots {
-  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "https://kerfbox.vercel.app";
+  const base = SITE_URL;
   return {
     rules: [
       {

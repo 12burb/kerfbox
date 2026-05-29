@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { KerfSchema, BriefSchema } from "@/lib/schema";
 import { getSupabaseServer } from "@/lib/supabase";
-import { authenticate, csrfGuard, hasScope, logApiCall, dbError } from "@/lib/api-auth";
+import { authenticate, csrfGuard, enforceBodyLimit, hasScope, logApiCall, dbError } from "@/lib/api-auth";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
@@ -110,6 +110,9 @@ export async function GET(req: Request) {
  */
 export async function POST(req: Request) {
   const startedAt = Date.now();
+
+  const tooLarge = enforceBodyLimit(req);
+  if (tooLarge) return tooLarge;
 
   // Auth + scope check first — *before* parsing the body — so an
   // unauthenticated caller can't trigger Zod validation on arbitrary

@@ -16,9 +16,72 @@ export const dynamic = "force-static";
 // it doesn't shadow the route's `export const dynamic` flag above.
 const DemoCarousel = dynamicImport(() => import("@/components/cmo/DemoCarousel"));
 
+// Single source for the FAQ — rendered as the visible accordion below and
+// emitted as FAQPage structured data so the same Q&A can surface as a rich
+// result. Keep the two in sync by construction (one array, two consumers).
+const FAQ: { q: string; a: string }[] = [
+  {
+    q: "Is this just another AI content generator?",
+    a: "No. Generators write copy from a blank prompt. kerf.box does the strategic work first — maps the cluster, names the cut, defends the wedge — then writes copy that holds the wedge. The system refuses to ship if the moat is undefendable.",
+  },
+  {
+    q: "What is a Kerf?",
+    a: "Borrowed from woodworking: a kerf is the narrow slot a saw makes. The Kerf method says strategy is the narrow defensible cut between where the category clusters today and where this brand can legitimately stand alone — not a story you tell, a slot you cut.",
+  },
+  {
+    q: "What is the refusal rule?",
+    a: "After generation, the wedge.moat field is checked. If it doesn't reference at least one competitor from the cluster map, or reduces to 'we'll execute better,' the route returns 422 with a reason. The brand POV — that undefendable strategy is worse than no strategy — is enforced in code.",
+  },
+  {
+    q: "What's BYOK?",
+    a: "Bring Your Own Key. You pass an Anthropic API key with each call (X-Anthropic-Key header) and pay Anthropic directly at cost. We never hold or proxy your key. This is the recommended path for agents and high-volume callers.",
+  },
+  {
+    q: "Where does the research come from?",
+    a: "Live web search via Anthropic's research model. Every signal ships with citations you can click and verify. Inferences are flagged. Nothing is invented.",
+  },
+  {
+    q: "How long does one kerf take?",
+    a: "About 60–90 seconds end-to-end. You'll see the cluster map, kerf, and wedge stream in live.",
+  },
+  {
+    q: "Can my agent use kerf.box?",
+    a: "Yes. We ship an MCP server (npx -y @kerfbox/mcp) and a public OpenAPI 3.1 spec at /api/openapi.json. Tools: cut_kerf, generate_copy, list_kerfs, get_kerf. BYOK works on every endpoint.",
+  },
+  {
+    q: "Can I export the kerf?",
+    a: "Yes — every kerf is saved to your account, and all paid plans include markdown export so you can drop it into Notion, Linear, or Slack. There's also a JSON API and an MCP server for agent workflows.",
+  },
+  {
+    q: "Who's this for?",
+    a: "Solo founders, indie hackers, small studios with a real wedge they're not articulating. If your positioning sounds like every competitor, this finds the cut.",
+  },
+  {
+    q: "What if my kerf is bad?",
+    a: "Generate another. Beta is unmetered with BYOK — most users iterate 2–3 times to find the cut that holds. The refusal rule will tell you exactly what's missing so the next run is sharper.",
+  },
+];
+
+// FAQPage structured data built from the same array. Rendered inline on the
+// landing page (force-static) so it's in the initial HTML for crawlers.
+const faqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: FAQ.map((f) => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
+
 export default function LandingPage() {
   return (
     <div className="min-h-screen w-full">
+      <script
+        type="application/ld+json"
+        // Built at module scope from the static FAQ array — no user input.
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+      />
       <div className="relative max-w-6xl mx-auto px-6 md:px-10 py-8 md:py-12">
         {/* HEADER */}
         <header className="flex items-center justify-between mb-16 md:mb-24">
@@ -494,48 +557,7 @@ export default function LandingPage() {
             Questions.
           </h2>
           <div className="divide-y" style={{ borderColor: ACCENT_DIM }}>
-            {[
-              {
-                q: "Is this just another AI content generator?",
-                a: "No. Generators write copy from a blank prompt. kerf.box does the strategic work first — maps the cluster, names the cut, defends the wedge — then writes copy that holds the wedge. The system refuses to ship if the moat is undefendable.",
-              },
-              {
-                q: "What is a Kerf?",
-                a: "Borrowed from woodworking: a kerf is the narrow slot a saw makes. The Kerf method says strategy is the narrow defensible cut between where the category clusters today and where this brand can legitimately stand alone — not a story you tell, a slot you cut.",
-              },
-              {
-                q: "What is the refusal rule?",
-                a: "After generation, the wedge.moat field is checked. If it doesn't reference at least one competitor from the cluster map, or reduces to 'we'll execute better,' the route returns 422 with a reason. The brand POV — that undefendable strategy is worse than no strategy — is enforced in code.",
-              },
-              {
-                q: "What's BYOK?",
-                a: "Bring Your Own Key. You pass an Anthropic API key with each call (X-Anthropic-Key header) and pay Anthropic directly at cost. We never hold or proxy your key. This is the recommended path for agents and high-volume callers.",
-              },
-              {
-                q: "Where does the research come from?",
-                a: "Live web search via Anthropic's research model. Every signal ships with citations you can click and verify. Inferences are flagged. Nothing is invented.",
-              },
-              {
-                q: "How long does one kerf take?",
-                a: "About 60–90 seconds end-to-end. You'll see the cluster map, kerf, and wedge stream in live.",
-              },
-              {
-                q: "Can my agent use kerf.box?",
-                a: "Yes. We ship an MCP server (npx -y @kerfbox/mcp) and a public OpenAPI 3.1 spec at /api/openapi.json. Tools: cut_kerf, generate_copy, list_kerfs, get_kerf. BYOK works on every endpoint.",
-              },
-              {
-                q: "Can I export the kerf?",
-                a: "Yes — every kerf is saved to your account, and all paid plans include markdown export so you can drop it into Notion, Linear, or Slack. There's also a JSON API and an MCP server for agent workflows.",
-              },
-              {
-                q: "Who's this for?",
-                a: "Solo founders, indie hackers, small studios with a real wedge they're not articulating. If your positioning sounds like every competitor, this finds the cut.",
-              },
-              {
-                q: "What if my kerf is bad?",
-                a: "Generate another. Beta is unmetered with BYOK — most users iterate 2–3 times to find the cut that holds. The refusal rule will tell you exactly what's missing so the next run is sharper.",
-              },
-            ].map((f) => (
+            {FAQ.map((f) => (
               <details key={f.q} className="py-5 group">
                 <summary className="flex items-start justify-between gap-6 cursor-pointer list-none">
                   <span className="serif text-lg md:text-xl" style={{ fontWeight: 500 }}>
@@ -605,11 +627,20 @@ export default function LandingPage() {
               kerf.box · strategy is a cut · v0.2
             </div>
           </div>
-          <div className="flex items-center gap-6 mono text-[10px] uppercase tracking-widest" style={{ color: MUTED }}>
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mono text-[10px] uppercase tracking-widest" style={{ color: MUTED }}>
             <Link href="/app">app</Link>
             <Link href="/briefs">archive</Link>
             <Link href="#mcp">api / mcp</Link>
             <Link href="#pricing">pricing</Link>
+            <Link href="/privacy">privacy</Link>
+            <Link href="/terms">terms</Link>
+            <a
+              href="https://github.com/12burb/cmoinabox/issues"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              contact
+            </a>
           </div>
         </div>
       </div>

@@ -18,6 +18,8 @@
  * `await checkRateLimit(...)`. When no Upstash env is set the awaited
  * promise resolves synchronously off the in-memory path — no overhead.
  */
+import { sanitizeForLog } from "./api-auth";
+
 export type RateLimitDecision = {
   allowed: boolean;
   retryAfterSeconds: number;
@@ -225,8 +227,12 @@ export async function checkRateLimit(
     // Fail-open with the in-memory backend. We still get *some* protection
     // even if Upstash is unreachable, and we avoid taking down the API
     // when our limiter dependency hiccups.
+    //
+    // Scrub the error before logging: a fetch/Upstash failure can carry the
+    // REST URL and Authorization token in its message/stack, and these logs
+    // ship to Vercel where they're broadly readable.
     // eslint-disable-next-line no-console
-    console.warn("[rate-limit] upstash failed, falling back to in-memory:", err);
+    console.warn("[rate-limit] upstash failed, falling back to in-memory:", sanitizeForLog(err));
     return inMemoryCheck(key, limit, windowMs);
   }
 }
@@ -247,9 +253,14 @@ export function rateLimitKey(args: {
 }): string {
   if (args.userId) return `${args.prefix}:user:${args.userId}`;
   if (args.apiKeyId) return `${args.prefix}:key:${args.apiKeyId}`;
+  // Prefer `x-real-ip`: on Vercel it's a single, proxy-set value for the
+  // true client IP. `x-forwarded-for` is a client-appendable chain — Vercel
+  // prepends the real IP, but parsing "first entry" is more fragile and
+  // easier to game from behind misconfigured intermediaries. Fall back to
+  // the XFF head only when x-real-ip is absent (e.g. local dev).
   const ip =
+    args.req.headers.get("x-real-ip")?.trim() ||
     args.req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    args.req.headers.get("x-real-ip") ||
     "anon";
   return `${args.prefix}:ip:${ip}`;
 }

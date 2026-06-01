@@ -28,6 +28,7 @@ export default function AuthButtons() {
         </SignUpButton>
       </Show>
       <Show when="signed-in">
+        {/* Sign-out redirect is configured on ClerkProvider (afterSignOutUrl). */}
         <UserButton appearance={{ elements: { avatarBox: { width: 28, height: 28 } } }} />
       </Show>
     </div>

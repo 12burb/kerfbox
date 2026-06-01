@@ -129,5 +129,38 @@ export default function RootLayout({
     </html>
   );
   if (!hasClerk) return body;
-  return <ClerkProvider>{body}</ClerkProvider>;
+  return (
+    <ClerkProvider
+      // Dedicated routes (app/sign-in, app/sign-up) so Clerk's
+      // auth.protect() in middleware redirects there instead of returning
+      // a bare 404 to logged-out visitors. Modal sign-in in the header still
+      // works alongside these.
+      signInUrl="/sign-in"
+      signUpUrl="/sign-up"
+      // Where to land after auth when there's no explicit return URL.
+      signInFallbackRedirectUrl="/app"
+      signUpFallbackRedirectUrl="/app"
+      // Where the avatar menu's "Sign out" returns to. In Clerk v7 this is a
+      // ClerkProvider prop, not a UserButton prop.
+      afterSignOutUrl="/"
+      // Brand the hosted Clerk UI (modals, sign-in/up pages, the avatar
+      // menu) to match the app: red accent on near-black, squared corners.
+      // Variables-only so it survives Clerk element-key churn between
+      // versions — no @clerk/themes dependency needed.
+      appearance={{
+        variables: {
+          colorPrimary: "#ff1744",
+          colorBackground: "#121215",
+          colorText: "#f5f1e8",
+          colorTextSecondary: "#7a7a82",
+          colorInputBackground: "#0a0a0c",
+          colorInputText: "#f5f1e8",
+          colorNeutral: "#f5f1e8",
+          borderRadius: "0px",
+        },
+      }}
+    >
+      {body}
+    </ClerkProvider>
+  );
 }

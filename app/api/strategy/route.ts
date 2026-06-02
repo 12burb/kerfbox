@@ -6,6 +6,8 @@ import { DEMO_KERF } from "@/lib/demo";
 import { authenticate, attemptedAuth, enforceBodyLimit, hasScope, logApiCall, sanitizeForLog, type AuthSubject } from "@/lib/api-auth";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { extractJsonObject } from "@/lib/json-extract";
+import { isSubscribed } from "@/lib/billing";
+import { SITE_URL } from "@/lib/site";
 
 export const runtime = "nodejs";
 // Live web-search + Sonnet synthesis can occasionally exceed 60s on slow
@@ -300,6 +302,25 @@ export async function POST(req: Request) {
       error:
         "Live inference requires either a BYOK Anthropic key (`X-Anthropic-Key` header) or authentication (`Authorization: Bearer cmo_live_...`). For demo content, set `demo: true`.",
     });
+  }
+
+  // Paid gate: running on OUR key (no BYOK) is the Pro perk ($15/mo). The
+  // BYOK and demo paths stay free for everyone. This only fires for an
+  // authenticated caller who omitted their own key and would therefore
+  // consume our server key. isSubscribed() FAILS OPEN when Stripe isn't
+  // configured, so self-host / OSS deployments are never paywalled — the
+  // operator's own ANTHROPIC_API_KEY serves everyone, exactly as before.
+  if (subject && !byokKey && hasAnthropicKey() && !demoRequested) {
+    const subscribed = await isSubscribed(subject.userId);
+    if (!subscribed) {
+      return jsonResponse(402, {
+        error:
+          "The in-house agent is a Pro feature. Pass your own key via the X-Anthropic-Key header (free), or upgrade at " +
+          `${SITE_URL}/pricing.`,
+        code: "subscription_required",
+        upgrade_url: `${SITE_URL}/pricing`,
+      });
+    }
   }
 
   // Compute final mode AFTER the gate. `noKeyAvailable` already includes

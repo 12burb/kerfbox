@@ -7,6 +7,8 @@ import { DEMO_COPY } from "@/lib/demo";
 import { authenticate, attemptedAuth, enforceBodyLimit, hasScope, logApiCall, sanitizeForLog } from "@/lib/api-auth";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { extractJsonObject } from "@/lib/json-extract";
+import { isSubscribed } from "@/lib/billing";
+import { SITE_URL } from "@/lib/site";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -96,6 +98,25 @@ export async function POST(req: Request) {
       },
       { status: 401 }
     );
+  }
+
+  // Paid gate: our key (no BYOK) is the Pro perk. BYOK + demo stay free.
+  // Fails open when Stripe is unconfigured (self-host). See /api/strategy
+  // for the full rationale.
+  if (subject && !byokKey && hasAnthropicKey() && !demoRequested) {
+    const subscribed = await isSubscribed(subject.userId);
+    if (!subscribed) {
+      return NextResponse.json(
+        {
+          error:
+            "The in-house agent is a Pro feature. Pass your own key via the X-Anthropic-Key header (free), or upgrade at " +
+            `${SITE_URL}/pricing.`,
+          code: "subscription_required",
+          upgrade_url: `${SITE_URL}/pricing`,
+        },
+        { status: 402 }
+      );
+    }
   }
 
   const useDemo = demoRequested || noKeyAvailable;

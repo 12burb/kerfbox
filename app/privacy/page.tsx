@@ -89,8 +89,10 @@ export default function PrivacyPage() {
                 anywhere we can read it.
               </li>
               <li>
-                <strong>Payment details.</strong> Paid plans are not yet live. We
-                do not currently process or store payment information.
+                <strong>Card numbers.</strong> Payments for Pro are handled
+                entirely by <strong>Stripe</strong>. Your card details go to
+                Stripe, never to us — we only store a Stripe customer/subscription
+                id and your plan status so we know whether your account is active.
               </li>
               <li>
                 <strong>Your data, for sale.</strong> We do not sell or rent
@@ -108,9 +110,10 @@ export default function PrivacyPage() {
               We rely on a small set of infrastructure providers to run the
               service: <strong>Clerk</strong> (authentication),{" "}
               <strong>Supabase</strong> (database), <strong>Vercel</strong>{" "}
-              (hosting), and <strong>Anthropic</strong> (model inference, when you
-              are not using BYOK). Your inputs are sent to Anthropic only to
-              generate the response you requested.
+              (hosting), <strong>Stripe</strong> (payments for Pro), and{" "}
+              <strong>Anthropic</strong> (model inference, when you are not using
+              BYOK). Your inputs are sent to Anthropic only to generate the
+              response you requested.
             </p>
           </section>
 

@@ -34,7 +34,11 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "What's BYOK?",
-    a: "Bring Your Own Key. You pass an Anthropic API key with each call (X-Anthropic-Key header) and pay Anthropic directly at cost. We never hold or proxy your key. This is the recommended path for agents and high-volume callers.",
+    a: "Bring Your Own Key. You pass an Anthropic API key with each call (X-Anthropic-Key header) and pay Anthropic directly at cost. We never hold or proxy your key. This is the recommended path for agents and high-volume callers — and it's free.",
+  },
+  {
+    q: "What does it cost?",
+    a: "Free with your own Anthropic key (BYOK) or over MCP — forever, because you pay Anthropic directly. The only paid tier is Pro at a flat $15/mo: we run every request on our in-house agent so you never manage a key. No metering, no per-seat, cancel anytime.",
   },
   {
     q: "Where does the research come from?",
@@ -50,7 +54,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Can I export the kerf?",
-    a: "Yes — every kerf is saved to your account, and all paid plans include markdown export so you can drop it into Notion, Linear, or Slack. There's also a JSON API and an MCP server for agent workflows.",
+    a: "Yes — every kerf is saved to your account, and markdown export is free so you can drop it into Notion, Linear, or Slack. There's also a JSON API and an MCP server for agent workflows.",
   },
   {
     q: "Who's this for?",
@@ -58,7 +62,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "What if my kerf is bad?",
-    a: "Generate another. Beta is unmetered with BYOK — most users iterate 2–3 times to find the cut that holds. The refusal rule will tell you exactly what's missing so the next run is sharper.",
+    a: "Generate another. Runs are unmetered with BYOK — most users iterate 2–3 times to find the cut that holds. The refusal rule will tell you exactly what's missing so the next run is sharper.",
   },
 ];
 
@@ -426,21 +430,45 @@ export default function LandingPage() {
             ⎯ pricing
           </div>
           <h2 className="serif text-3xl md:text-4xl mb-3" style={{ fontWeight: 500 }}>
-            Free during beta.
+            Free to use. Pay only to skip the key.
           </h2>
-          <p className="text-sm mb-4 max-w-2xl" style={{ color: MUTED }}>
-            kerf.box is in public beta. Every visitor can cut a kerf today with BYOK
-            (you bring an Anthropic key, we never hold it). When the engine, archive,
-            and API leave beta, paid tiers below are what we&rsquo;ll ship.
+          <p className="text-sm mb-12 max-w-2xl" style={{ color: MUTED }}>
+            Bring your own Anthropic key — or connect kerf.box to your agent over MCP —
+            and it&rsquo;s free, forever. Pro runs every request on our in-house agent
+            for one flat fee, so you never manage a key.
           </p>
-          <p
-            className="mono text-[10px] uppercase tracking-widest mb-12 inline-block px-2 py-1"
-            style={{ background: "rgba(255,23,68,0.08)", color: ACCENT, border: `1px dashed ${ACCENT_DIM}` }}
-          >
-            beta · usage caps not yet enforced · prices not final
-          </p>
-          <div className="grid md:grid-cols-3 gap-6">
-            {/* BETA — what's real today */}
+          <div className="grid md:grid-cols-2 gap-6 max-w-3xl">
+            {/* FREE */}
+            <div
+              className="border p-6 md:p-8 flex flex-col"
+              style={{ borderColor: ACCENT_DIM, background: BG_2 }}
+            >
+              <div className="mono text-[10px] uppercase tracking-widest mb-4" style={{ color: MUTED }}>
+                free · BYOK or MCP
+              </div>
+              <div className="serif text-4xl mb-2" style={{ fontWeight: 500 }}>
+                $0
+              </div>
+              <div className="text-sm mb-6" style={{ color: MUTED }}>
+                Pay Anthropic at cost. We charge nothing.
+              </div>
+              <ul className="space-y-2 text-sm mb-8 flex-1" style={{ color: MUTED }}>
+                <li>· Unlimited kerfs with your own key</li>
+                <li>· Full REST API + MCP server for agents</li>
+                <li>· Save to archive · mint scoped API keys</li>
+                <li>· The refusal engine · demo mode</li>
+                <li>· Open source — self-host it all</li>
+              </ul>
+              <Link
+                href="/app"
+                className="mono text-[11px] uppercase tracking-widest px-3 py-2 text-center"
+                style={{ background: ACCENT, color: "#000", fontWeight: 600 }}
+              >
+                start free →
+              </Link>
+            </div>
+
+            {/* PRO */}
             <div
               className="border p-6 md:p-8 flex flex-col relative"
               style={{ borderColor: ACCENT, background: "rgba(255,23,68,0.04)" }}
@@ -449,98 +477,30 @@ export default function LandingPage() {
                 className="absolute -top-3 left-6 mono text-[10px] uppercase tracking-widest px-2 py-1"
                 style={{ background: ACCENT, color: "#000", fontWeight: 600 }}
               >
-                available now
+                the luxury
               </div>
-              <div
-                className="mono text-[10px] uppercase tracking-widest mb-4"
-                style={{ color: ACCENT }}
-              >
-                beta · BYOK
+              <div className="mono text-[10px] uppercase tracking-widest mb-4" style={{ color: ACCENT }}>
+                pro · in-house agent
               </div>
               <div className="serif text-4xl mb-2" style={{ fontWeight: 500 }}>
-                $0
+                $15<span className="text-base" style={{ color: MUTED }}>/mo</span>
               </div>
               <div className="text-sm mb-6" style={{ color: MUTED }}>
-                Pay Anthropic at cost. We charge nothing during beta.
+                We run the agent. You never touch a key.
               </div>
               <ul className="space-y-2 text-sm mb-8 flex-1" style={{ color: MUTED }}>
-                <li>· Live web research + citations</li>
-                <li>· Full wedge + 7-day calendar + copy</li>
-                <li>· Markdown export</li>
-                <li>· Sign in to save to archive</li>
-                <li>· Demo mode (no key needed)</li>
+                <li>· Everything in Free</li>
+                <li>· Run with no key — inference on us</li>
+                <li>· Flat fee · no metering, no per-seat</li>
+                <li>· Works from the web app, API, or MCP</li>
               </ul>
               <Link
-                href="/app"
+                href="/pricing"
                 className="mono text-[11px] uppercase tracking-widest px-3 py-2 text-center"
                 style={{ background: ACCENT, color: "#000", fontWeight: 600 }}
               >
-                cut a kerf →
+                go pro · $15/mo →
               </Link>
-            </div>
-
-            {/* FOUNDER — planned */}
-            <div
-              className="border p-6 md:p-8 flex flex-col"
-              style={{ borderColor: ACCENT_DIM }}
-            >
-              <div
-                className="mono text-[10px] uppercase tracking-widest mb-4"
-                style={{ color: MUTED }}
-              >
-                founder · coming at GA
-              </div>
-              <div className="serif text-4xl mb-2" style={{ fontWeight: 500, color: MUTED }}>
-                ~$19<span className="text-base" style={{ color: MUTED }}>/mo</span>
-              </div>
-              <div className="text-sm mb-6" style={{ color: MUTED }}>
-                Planned tier for solo founders shipping weekly.
-              </div>
-              <ul className="space-y-2 text-sm mb-8 flex-1" style={{ color: MUTED }}>
-                <li>· Generous monthly kerf allowance</li>
-                <li>· Hosted inference (no BYOK required)</li>
-                <li>· Priority research model</li>
-                <li>· API + MCP access</li>
-                <li>· BYOK still discounted</li>
-              </ul>
-              <span
-                className="mono text-[11px] uppercase tracking-widest px-3 py-2 border text-center cursor-not-allowed"
-                style={{ borderColor: ACCENT_DIM, color: MUTED, opacity: 0.7 }}
-              >
-                planned · not yet live
-              </span>
-            </div>
-
-            {/* STUDIO — planned */}
-            <div
-              className="border p-6 md:p-8 flex flex-col"
-              style={{ borderColor: ACCENT_DIM }}
-            >
-              <div
-                className="mono text-[10px] uppercase tracking-widest mb-4"
-                style={{ color: MUTED }}
-              >
-                studio · coming at GA
-              </div>
-              <div className="serif text-4xl mb-2" style={{ fontWeight: 500, color: MUTED }}>
-                ~$29<span className="text-base" style={{ color: MUTED }}>/mo</span>
-              </div>
-              <div className="text-sm mb-6" style={{ color: MUTED }}>
-                Planned tier for tiny teams running multiple products.
-              </div>
-              <ul className="space-y-2 text-sm mb-8 flex-1" style={{ color: MUTED }}>
-                <li>· Higher monthly allowance</li>
-                <li>· Multi-brand archive</li>
-                <li>· Priority research model</li>
-                <li>· Markdown + JSON export</li>
-                <li>· Team API keys with scopes</li>
-              </ul>
-              <span
-                className="mono text-[11px] uppercase tracking-widest px-3 py-2 border text-center cursor-not-allowed"
-                style={{ borderColor: ACCENT_DIM, color: MUTED, opacity: 0.7 }}
-              >
-                planned · not yet live
-              </span>
             </div>
           </div>
         </section>
@@ -631,7 +591,7 @@ export default function LandingPage() {
             <Link href="/app">app</Link>
             <Link href="/briefs">archive</Link>
             <Link href="#mcp">api / mcp</Link>
-            <Link href="#pricing">pricing</Link>
+            <Link href="/pricing">pricing</Link>
             <Link href="/privacy">privacy</Link>
             <Link href="/terms">terms</Link>
             <a

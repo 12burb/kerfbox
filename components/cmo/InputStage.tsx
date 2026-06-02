@@ -9,6 +9,9 @@ type Props = {
   audience: string;
   byokKey: string;
   error: string | null;
+  /** True when the signed-in user can run on the in-house agent (Pro, or a
+   *  self-host with a server key). Makes BYOK optional. */
+  canUseInHouse?: boolean;
   onUrlChange: (v: string) => void;
   onAudienceChange: (v: string) => void;
   onByokKeyChange: (v: string) => void;
@@ -32,6 +35,7 @@ export default function InputStage({
   audience,
   byokKey,
   error,
+  canUseInHouse = false,
   onUrlChange,
   onAudienceChange,
   onByokKeyChange,
@@ -39,6 +43,8 @@ export default function InputStage({
 }: Props) {
   const [keyVisible, setKeyVisible] = useState(false);
   const hasKey = byokKey.trim().length > 0;
+  // Live runs need EITHER a pasted key OR Pro/in-house entitlement.
+  const canRunLive = hasKey || canUseInHouse;
 
   return (
     <div className="relative">
@@ -105,7 +111,11 @@ export default function InputStage({
           >
             <KeyRound size={12} />
             03 · Anthropic key (BYOK) ·{" "}
-            <span style={{ color: ACCENT }}>required for live runs</span>
+            {canUseInHouse ? (
+              <span style={{ color: MUTED }}>optional — you&rsquo;re on the in-house agent</span>
+            ) : (
+              <span style={{ color: ACCENT }}>required for live runs</span>
+            )}
           </label>
           <div className="flex items-stretch gap-2">
             <input
@@ -158,9 +168,9 @@ export default function InputStage({
         >
           <button
             onClick={() => onRun(false)}
-            disabled={!hasKey}
+            disabled={!canRunLive}
             className="btn-red px-8 py-4 mono text-sm uppercase tracking-widest font-bold inline-flex items-center gap-3 disabled:opacity-40 disabled:cursor-not-allowed"
-            title={hasKey ? "" : "Paste an Anthropic key to run live."}
+            title={canRunLive ? "" : "Paste an Anthropic key, or upgrade to Pro to run on our agent."}
           >
             <Play size={14} fill="currentColor" /> Cut a kerf
           </button>

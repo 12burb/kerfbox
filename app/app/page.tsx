@@ -8,6 +8,7 @@ import WorkingStage from "@/components/cmo/WorkingStage";
 import KerfStage from "@/components/cmo/BriefStage";
 import CopyModal from "@/components/cmo/CopyModal";
 import SaveBar, { type SaveState } from "@/components/cmo/SaveBar";
+import { ManageBillingButton } from "@/components/cmo/BillingButtons";
 import {
   ACCENT,
   ACCENT_DIM,
@@ -24,6 +25,15 @@ export default function AppPage() {
   const [url, setUrl] = useState("https://linear.app");
   const [audience, setAudience] = useState("Indie SaaS founders shipping their first $1k MRR");
   const [byokKey, setByokKey] = useState("");
+  // Billing/entitlement snapshot from /api/billing/status. `canUseInHouse`
+  // is the server's honest answer to "will a keyless run work for you here"
+  // (needs a server key AND billing-off-or-Pro). Null until the first fetch.
+  const [billing, setBilling] = useState<{
+    billingEnabled: boolean;
+    subscribed: boolean;
+    canUseInHouse: boolean;
+    plan: string | null;
+  } | null>(null);
   const [researchSteps, setResearchSteps] = useState<ResearchStep[]>([]);
   const [kerf, setKerf] = useState<Kerf | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<CalendarEntry | null>(null);
@@ -60,6 +70,33 @@ export default function AppPage() {
     };
   }, []);
 
+  // Fetch entitlement once on mount. If we just returned from Stripe
+  // Checkout (?upgraded=1), the webhook may still be in flight, so refetch
+  // once after a short delay to catch the Pro flip without a manual reload.
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      fetch("/api/billing/status")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (!cancelled && d) setBilling(d);
+        })
+        .catch(() => {});
+    load();
+    let t: ReturnType<typeof setTimeout> | null = null;
+    try {
+      if (window.location.search.includes("upgraded=1")) {
+        t = setTimeout(load, 3000);
+      }
+    } catch {
+      // window unavailable — ignore.
+    }
+    return () => {
+      cancelled = true;
+      if (t) clearTimeout(t);
+    };
+  }, []);
+
   // Hydrate BYOK from localStorage on first mount. Saved-kerf views
   // (`components/cmo/BriefView.tsx`) read the same key so users who set
   // their key here once can generate copy from their archive without
@@ -93,8 +130,10 @@ export default function AppPage() {
       setError("URL and audience are both required.");
       return;
     }
-    if (!demoMode && !byokKey.trim()) {
-      setError("Paste your Anthropic key, or click 'run with demo data'.");
+    if (!demoMode && !byokKey.trim() && !(billing?.canUseInHouse ?? false)) {
+      setError(
+        "Paste your Anthropic key, upgrade to Pro to run on our agent, or click 'run with demo data'."
+      );
       return;
     }
     // Abort any prior in-flight stream so its trailing events can't land
@@ -361,6 +400,29 @@ export default function AppPage() {
                 ← new kerf
               </button>
             )}
+            {/* Billing control: Pro badge + portal for subscribers, an
+                upgrade nudge otherwise. Only shows when billing is actually
+                enabled on the deployment. */}
+            {billing?.billingEnabled && billing.subscribed && (
+              <>
+                <span
+                  className="mono text-[10px] uppercase tracking-widest px-2 py-2 inline-flex items-center gap-1.5"
+                  style={{ color: ACCENT }}
+                >
+                  ● Pro
+                </span>
+                <ManageBillingButton />
+              </>
+            )}
+            {billing?.billingEnabled && !billing.subscribed && (
+              <Link
+                href="/pricing"
+                className="mono text-[11px] uppercase tracking-widest px-3 py-2 border"
+                style={{ borderColor: ACCENT, color: ACCENT }}
+              >
+                upgrade $15/mo →
+              </Link>
+            )}
             <AuthButtons />
           </div>
         </header>
@@ -371,6 +433,7 @@ export default function AppPage() {
             audience={audience}
             byokKey={byokKey}
             error={error}
+            canUseInHouse={billing?.canUseInHouse ?? false}
             onUrlChange={setUrl}
             onAudienceChange={setAudience}
             onByokKeyChange={setByokKey}

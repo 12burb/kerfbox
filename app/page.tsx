@@ -1,6 +1,5 @@
 import Link from "next/link";
 import dynamicImport from "next/dynamic";
-import AuthButtons from "@/components/cmo/AuthButtons";
 import { ACCENT, ACCENT_DIM, BG_2, MUTED } from "@/components/cmo/shared";
 
 // Keep static — the demo carousel is client-rendered but the rest of
@@ -50,11 +49,11 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Can my agent use kerf.box?",
-    a: "Yes. We ship an MCP server (npx -y @kerfbox/mcp) and a public OpenAPI 3.1 spec at /api/openapi.json. Tools: cut_kerf, generate_copy, list_kerfs, get_kerf. BYOK works on every endpoint.",
+    a: "Yes. We ship an MCP server (npx -y @kerfbox/mcp) and a public OpenAPI 3.1 spec at /api/openapi.json. Tools: cut_kerf and generate_copy. The API is open — no account, no API key. Bring your own Anthropic key (BYOK) for live runs, or call with demo:true.",
   },
   {
     q: "Can I export the kerf?",
-    a: "Yes — every kerf is saved to your account, and markdown export is free so you can drop it into Notion, Linear, or Slack. There's also a JSON API and an MCP server for agent workflows.",
+    a: "Yes — kerfs save to your browser, and you can export each one as JSON or markdown to drop into Notion, Linear, or Slack, or re-import it on another device. There's also a JSON API and an MCP server for agent workflows.",
   },
   {
     q: "Who's this for?",
@@ -137,7 +136,6 @@ export default function LandingPage() {
             >
               open app →
             </Link>
-            <AuthButtons />
           </div>
         </header>
 
@@ -314,15 +312,15 @@ export default function LandingPage() {
               </h2>
               <p className="text-base leading-relaxed mb-4" style={{ color: MUTED }}>
                 kerf.box ships as an MCP server and an OpenAPI 3.1 spec. Your
-                agent can <span style={{ color: ACCENT }}>cut_kerf</span>,{" "}
-                <span style={{ color: ACCENT }}>generate_copy</span>, and{" "}
-                <span style={{ color: ACCENT }}>list_kerfs</span> against the
+                agent can <span style={{ color: ACCENT }}>cut_kerf</span> and{" "}
+                <span style={{ color: ACCENT }}>generate_copy</span> against the
                 same engine that powers the web app.
               </p>
               <p className="text-base leading-relaxed mb-6" style={{ color: MUTED }}>
-                BYOK Anthropic keys passed through on every call — we never
-                hold the inference key. The refusal rule applies to agents too:
-                an undefendable Kerf is a 422, not a hallucination dressed in a
+                No account, no API key — the API is open. You bring your own
+                Anthropic key per call (passed through, never stored), or
+                connect over MCP. The refusal rule applies to agents too: an
+                undefendable Kerf is a 422, not a hallucination dressed in a
                 deck.
               </p>
               <div className="flex flex-wrap gap-3">
@@ -332,13 +330,6 @@ export default function LandingPage() {
                   style={{ borderColor: ACCENT, color: ACCENT }}
                 >
                   openapi.json →
-                </Link>
-                <Link
-                  href="/app/keys"
-                  className="mono text-[11px] uppercase tracking-widest px-3 py-2 border"
-                  style={{ borderColor: ACCENT_DIM, color: MUTED }}
-                >
-                  issue an api key →
                 </Link>
               </div>
             </div>
@@ -355,12 +346,10 @@ export default function LandingPage() {
                 <div className="mt-2 space-y-1" style={{ color: "#f5f1e8" }}>
                   <div>· cut_kerf({"{ url, audience }"})</div>
                   <div>· generate_copy({"{ kerf, entry }"})</div>
-                  <div>· list_kerfs() / get_kerf(id)</div>
                 </div>
-                <div className="mt-5" style={{ color: ACCENT }}># or call the http api directly</div>
+                <div className="mt-5" style={{ color: ACCENT }}># or call the http api directly — no key to mint</div>
                 <div className="mt-2" style={{ color: "#f5f1e8", whiteSpace: "pre-wrap" }}>
                   {`curl -N https://kerfbox.vercel.app/api/strategy \\
-  -H "Authorization: Bearer cmo_live_..." \\
   -H "X-Anthropic-Key: sk-ant-..." \\
   -H "Content-Type: application/json" \\
   -d '{"url":"https://linear.app","audience":"indie SaaS founders"}'`}
@@ -456,8 +445,8 @@ export default function LandingPage() {
               <ul className="space-y-2 text-sm mb-8 flex-1" style={{ color: MUTED }}>
                 <li>· Unlimited kerfs with your own key</li>
                 <li>· Or connect to Claude over MCP — no key to paste</li>
-                <li>· Full REST API + MCP server for agents</li>
-                <li>· Save to archive · mint scoped API keys</li>
+                <li>· Open REST API + MCP — no account, no API key</li>
+                <li>· Save in your browser · export &amp; import as JSON</li>
                 <li>· The refusal engine · demo mode</li>
                 <li>· Open source — self-host it all</li>
               </ul>

@@ -61,9 +61,9 @@ export default function TermsPage() {
                 rights, or generate harmful, deceptive, or abusive material.
               </li>
               <li>
-                Don&apos;t attempt to circumvent rate limits, authentication, or
-                scope restrictions, or probe the service for vulnerabilities
-                without reporting them responsibly via{" "}
+                Don&apos;t attempt to circumvent the per-IP rate limits, or probe
+                the service for vulnerabilities without reporting them responsibly
+                via{" "}
                 <a
                   href={ISSUES_URL}
                   target="_blank"
@@ -75,8 +75,10 @@ export default function TermsPage() {
                 .
               </li>
               <li>
-                Keep your API keys secret. You are responsible for activity under
-                your account and keys; revoke a key immediately if it leaks.
+                Keep your own Anthropic key (BYOK) secret. You are responsible for
+                any usage and charges incurred under your key; rotate it with
+                Anthropic immediately if it leaks. {SITE_NAME} has no accounts and
+                issues no API keys of its own.
               </li>
             </ul>
           </section>
@@ -100,8 +102,9 @@ export default function TermsPage() {
             <p>
               This is beta software. We may change, suspend, or discontinue
               features at any time, and we don&apos;t guarantee uptime, data
-              durability, or that any particular feature will ship. Paid plans
-              referenced on the site are planned and not yet live.
+              durability, or that any particular feature will ship. {SITE_NAME} is
+              free and account-free: saved kerfs live only in your browser, so
+              keeping your own backups (export them as JSON) is on you.
             </p>
           </section>
 

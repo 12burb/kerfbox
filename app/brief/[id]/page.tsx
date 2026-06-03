@@ -1,74 +1,51 @@
+"use client";
+
+import { use, useEffect, useState } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { getSupabaseServer } from "@/lib/supabase";
-import { currentUserIdOrNull } from "@/lib/auth";
-import { KerfSchema, BriefSchema, type Kerf } from "@/lib/schema";
-import { briefToKerf } from "@/lib/legacy";
 import KerfView from "@/components/cmo/BriefView";
-import AuthButtons from "@/components/cmo/AuthButtons";
+import { getArchived, type ArchivedKerf } from "@/lib/archive";
 import { ACCENT, ACCENT_DIM, MUTED } from "@/components/cmo/shared";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
-export default async function KerfDetailPage({
+/**
+ * Saved-kerf detail view. Account-free: the kerf is read from this
+ * browser's localStorage archive by id (see lib/archive.ts) — there is no
+ * server fetch and no auth. If the id isn't in this browser (e.g. the link
+ * was opened on a different device), we say so and point back to the
+ * archive, where a kerf can be imported from its exported `.json`.
+ */
+export default function KerfDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = await params;
-  const supabase = getSupabaseServer();
-  if (!supabase) {
+  const { id } = use(params);
+  const [entry, setEntry] = useState<ArchivedKerf | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    setEntry(getArchived(id));
+    setLoaded(true);
+  }, [id]);
+
+  if (loaded && !entry) {
     return (
       <FallbackShell
-        title="Persistence not configured"
-        body="Add SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY to enable saved kerfs."
+        title="Not in this browser"
+        body="This kerf isn't saved in this browser. Saved kerfs are browser-local — open it where you saved it, or import its exported .json from the archive."
       />
     );
   }
 
-  const userId = await currentUserIdOrNull();
-  if (!userId) {
-    return (
-      <FallbackShell
-        title="Sign in required"
-        body="This kerf is saved to a Clerk account. Configure Clerk keys to access it."
-      />
-    );
+  if (!entry) {
+    // Pre-hydration: render nothing to avoid a flash of the fallback.
+    return <div className="min-h-screen w-full" />;
   }
 
-  const { data, error } = await supabase
-    .from("briefs")
-    .select("id, url, audience, brief_json, created_at")
-    .eq("id", id)
-    .eq("user_id", userId)
-    .single();
-
-  if (error || !data) notFound();
-
-  // v0.2 stores Kerf-shaped JSON; v0.1 rows still hold legacy Brief shape.
-  // Try Kerf first; if the parse fails, fall back to Brief and adapt.
-  let kerf: Kerf | null = null;
-  let isLegacy = false;
-  const kerfParsed = KerfSchema.safeParse(data.brief_json);
-  if (kerfParsed.success) {
-    kerf = kerfParsed.data;
-  } else {
-    const legacyParsed = BriefSchema.safeParse(data.brief_json);
-    if (legacyParsed.success) {
-      kerf = briefToKerf(legacyParsed.data);
-      isLegacy = true;
-    }
-  }
-
-  if (!kerf) {
-    return (
-      <FallbackShell
-        title="Saved record is malformed"
-        body="The stored payload no longer matches any known schema."
-      />
-    );
-  }
+  const when = new Date(entry.createdAt).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 
   return (
     <div className="min-h-screen w-full">
@@ -89,12 +66,8 @@ export default async function KerfDetailPage({
                 className="mono text-[10px] uppercase tracking-widest"
                 style={{ color: MUTED }}
               >
-                {new Date(data.created_at).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}{" "}
-                · {data.url}
+                {when}
+                {entry.url ? ` · ${entry.url}` : ""}
               </div>
             </div>
           </div>
@@ -106,27 +79,9 @@ export default async function KerfDetailPage({
             >
               ← archive
             </Link>
-            <AuthButtons />
           </div>
         </header>
-        {isLegacy && (
-          <div
-            className="mb-8 p-4 mono text-[11px] uppercase tracking-widest"
-            style={{
-              border: `1px dashed ${ACCENT_DIM}`,
-              color: MUTED,
-              background: "transparent",
-            }}
-          >
-            <span style={{ color: ACCENT }}>⎯ Legacy v0.1 brief.</span> This
-            record predates the Kerf method. Re-run on{" "}
-            <Link href="/app" className="underline" style={{ color: ACCENT }}>
-              /app
-            </Link>{" "}
-            to cut a defensible Kerf.
-          </div>
-        )}
-        <KerfView kerf={kerf} />
+        <KerfView kerf={entry.kerf} />
       </div>
     </div>
   );
@@ -145,13 +100,22 @@ function FallbackShell({ title, body }: { title: string; body: string }) {
         <div className="serif text-xl" style={{ fontWeight: 500 }}>
           {body}
         </div>
-        <Link
-          href="/app"
-          className="inline-block mono text-[11px] uppercase tracking-widest px-3 py-2 border mt-4"
-          style={{ borderColor: ACCENT_DIM, color: MUTED }}
-        >
-          ← back to app
-        </Link>
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <Link
+            href="/briefs"
+            className="inline-block mono text-[11px] uppercase tracking-widest px-3 py-2 border"
+            style={{ borderColor: ACCENT_DIM, color: MUTED }}
+          >
+            ← archive
+          </Link>
+          <Link
+            href="/app"
+            className="inline-block mono text-[11px] uppercase tracking-widest px-3 py-2 border"
+            style={{ borderColor: ACCENT_DIM, color: MUTED }}
+          >
+            new kerf
+          </Link>
+        </div>
       </div>
     </main>
   );

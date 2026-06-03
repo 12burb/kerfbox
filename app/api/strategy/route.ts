@@ -3,7 +3,7 @@ import { StrategyRequestSchema, KerfSchema, type SSEEvent, type Kerf } from "@/l
 import { extractByokKey, getAnthropic, hasAnthropicKey, STRATEGY_MODEL } from "@/lib/anthropic";
 import { buildKerfMessages } from "@/lib/prompts";
 import { DEMO_KERF } from "@/lib/demo";
-import { authenticate, attemptedAuth, enforceBodyLimit, hasScope, logApiCall, sanitizeForLog, type AuthSubject } from "@/lib/api-auth";
+import { enforceBodyLimit, sanitizeForLog } from "@/lib/api-auth";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { extractJsonObject } from "@/lib/json-extract";
 
@@ -210,10 +210,13 @@ async function runLiveStream(
  *
  * Cut a Kerf for {url, audience}. Streams Server-Sent Events.
  *
- * Auth: Clerk session OR `Authorization: Bearer cmo_live_...` (API key).
- * BYOK: optional `X-Anthropic-Key` header — when present, inference uses
- *       the caller's Anthropic key instead of ours (recommended for
- *       agents and high-volume API users).
+ * Account-free: there is no login and no API key. Live inference runs on
+ * the caller's OWN Anthropic key, passed per-request as `X-Anthropic-Key`
+ * (BYOK) — never stored, logged, or proxied. Without a key, pass
+ * `demo: true` for canned content. A self-host operator may set a server
+ * ANTHROPIC_API_KEY to run live for everyone hitting that instance.
+ *
+ * Rate limiting keys on client IP (see lib/rate-limit.ts).
  *
  * Body: { url: string, audience: string, demo?: boolean }
  *
@@ -221,36 +224,15 @@ async function runLiveStream(
  * competitor and give a structural reason. The refusal is the brand POV.
  */
 export async function POST(req: Request) {
-  const startedAt = Date.now();
   // Reject oversized payloads before any parse/inference work.
   const tooLarge = enforceBodyLimit(req);
   if (tooLarge) return tooLarge;
-  const subject: AuthSubject | null = await authenticate(req);
-  const isApiKeyCall = subject?.via === "api_key";
 
-  // If the caller passed a Bearer header but it didn't resolve, reject
-  // unconditionally. Otherwise a garbage bearer would silently downgrade
-  // to the anonymous demo path on instances without a server Anthropic key.
-  if (subject === null && attemptedAuth(req)) {
-    return jsonResponse(401, { error: "Invalid or expired API key." });
-  }
-
-  // For API-key callers, enforce a scope. Web sessions are implicitly trusted.
-  if (isApiKeyCall && !hasScope(subject!, "strategy:write")) {
-    return jsonResponse(403, { error: "API key missing required scope: strategy:write" });
-  }
-
-  // Rate-limit AFTER auth so we can key by user/api-key id (a logged-in
-  // user gets the same budget across IPs). Anonymous callers are keyed
-  // by IP. Budget: 10 strategy runs per hour — a Kerf is expensive on
-  // both wall-clock and dollars, and a real user iterates 2-3 times.
+  // Rate-limit by IP — there are no accounts or API keys to key on.
+  // Budget: 10 strategy runs per hour — a Kerf is expensive on both
+  // wall-clock and dollars, and a real user iterates 2-3 times.
   const rl = await checkRateLimit(
-    rateLimitKey({
-      prefix: "strategy",
-      userId: subject?.userId ?? null,
-      apiKeyId: subject?.apiKeyId ?? null,
-      req,
-    }),
+    rateLimitKey({ prefix: "strategy", userId: null, apiKeyId: null, req }),
     10,
     60 * 60 * 1000
   );
@@ -273,41 +255,25 @@ export async function POST(req: Request) {
     return jsonResponse(400, { error: "url and audience are required." });
   }
   const { url, audience } = parsed.data;
-  // Demo is for the anonymous on-ramp only. API-key callers must never get
-  // canned content when they believe they asked for live inference — they
-  // hit the 503 below instead. Read off the validated shape, not raw body.
-  const demoRequested = !isApiKeyCall && parsed.data.demo === true;
+  const demoRequested = parsed.data.demo === true;
   const byokKey = extractByokKey(req);
   const noKeyAvailable = !byokKey && !hasAnthropicKey();
 
-  // API-key callers must NEVER silently get canned demo content when they
-  // asked for live inference. If we can't run inference (no BYOK, no
-  // server key), return 503 — an agent that ships demo content as the
-  // real strategy is a much worse outcome than a clean error.
-  if (isApiKeyCall && noKeyAvailable && !demoRequested) {
-    return jsonResponse(503, {
-      error:
-        "Inference unavailable: no Anthropic key. Pass `X-Anthropic-Key` (BYOK) or contact support.",
-    });
-  }
-
-  // Anonymous gating: demo OR BYOK is the on-ramp. If they asked for
-  // live inference (no `demo: true`) without bringing a key, send them
-  // back with a clear instruction. Anonymous + BYOK is allowed — they
-  // pay Anthropic directly and we never hold the key.
-  if (subject === null && !demoRequested && !byokKey) {
+  // The on-ramp is demo OR a key. If the caller asked for live inference
+  // (no `demo: true`) without bringing a BYOK key, and this instance has
+  // no server key either, send them back with a clear instruction. BYOK
+  // is always allowed — they pay Anthropic directly and we never hold it.
+  if (!demoRequested && noKeyAvailable) {
     return jsonResponse(401, {
       error:
-        "Live inference requires either a BYOK Anthropic key (`X-Anthropic-Key` header) or authentication (`Authorization: Bearer cmo_live_...`). For demo content, set `demo: true`.",
+        "Live inference requires your own Anthropic key (`X-Anthropic-Key` header, BYOK) or a Claude MCP connection. For canned content, set `demo: true`.",
     });
   }
 
   // Mode resolution. `noKeyAvailable` already includes !byokKey, so when
-  // BYOK is set we run live; when neither key exists, signed-in callers
-  // fall back to demo (helpful in local dev). API-key callers were
-  // rejected above (503), so they don't hit this path. kerf.box is free:
-  // live generation runs on the caller's own key (BYOK / MCP) or the
-  // operator's server key on a self-host — we never charge for it.
+  // BYOK (or a self-host server key) is set we run live; otherwise demo.
+  // kerf.box is free: live generation runs on the caller's own key (BYOK /
+  // MCP) or the operator's server key on a self-host — we never charge.
   const useDemo = demoRequested || noKeyAvailable;
 
   const encoder = new TextEncoder();
@@ -322,29 +288,15 @@ export async function POST(req: Request) {
         } else {
           await runLiveStream(url, audience, byokKey, send);
         }
-        await logApiCall({
-          subject,
-          endpoint: "/api/strategy",
-          status: 200,
-          durationMs: Date.now() - startedAt,
-          byok: !!byokKey,
-        });
       } catch (err) {
         // Sanitize: log the full error server-side (with secret scrubbing
-        // so an `sk-ant-...` or `cmo_live_...` from the request never lands
-        // in Vercel logs), ship a generic message to the client. SDK errors
-        // can include org IDs, request IDs, and partial prompt text in
-        // retry messages — none of which the caller needs.
+        // so an `sk-ant-...` from the request never lands in Vercel logs),
+        // ship a generic message to the client. SDK errors can include org
+        // IDs, request IDs, and partial prompt text in retry messages —
+        // none of which the caller needs.
         console.error("[/api/strategy] stream failed", sanitizeForLog(err));
         const message = sanitizeStreamError(err);
         send({ type: "error", message });
-        await logApiCall({
-          subject,
-          endpoint: "/api/strategy",
-          status: 500,
-          durationMs: Date.now() - startedAt,
-          byok: !!byokKey,
-        });
       } finally {
         controller.close();
       }

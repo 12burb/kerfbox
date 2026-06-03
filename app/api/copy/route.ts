@@ -4,7 +4,7 @@ import { CopyRequestSchema, CopySchema } from "@/lib/schema";
 import { extractByokKey, getAnthropic, hasAnthropicKey, COPY_MODEL } from "@/lib/anthropic";
 import { buildCopyMessages } from "@/lib/prompts";
 import { DEMO_COPY } from "@/lib/demo";
-import { authenticate, attemptedAuth, enforceBodyLimit, hasScope, logApiCall, sanitizeForLog } from "@/lib/api-auth";
+import { enforceBodyLimit, sanitizeForLog } from "@/lib/api-auth";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { extractJsonObject } from "@/lib/json-extract";
 
@@ -16,43 +16,23 @@ export const maxDuration = 30;
  *
  * Generate platform-ready copy for one calendar entry.
  *
- * Auth: Clerk session OR `Authorization: Bearer cmo_live_...`
- * BYOK: optional `X-Anthropic-Key` header.
+ * Account-free: no login, no API key. Live inference runs on the caller's
+ * own Anthropic key via the `X-Anthropic-Key` header (BYOK) — never stored
+ * or logged. Without a key, pass `demo: true`. Self-host operators may set
+ * a server ANTHROPIC_API_KEY. Rate limiting keys on client IP.
  *
  * Body: { kerf: Kerf, entry: CalendarEntry, demo?: boolean }
  */
 export async function POST(req: Request) {
-  const startedAt = Date.now();
   const tooLarge = enforceBodyLimit(req);
   if (tooLarge) return tooLarge;
-  const subject = await authenticate(req);
-  const isApiKeyCall = subject?.via === "api_key";
 
-  // Bearer attempted but didn't resolve → 401, never fall through to demo.
-  if (subject === null && attemptedAuth(req)) {
-    return NextResponse.json(
-      { error: "Invalid or expired API key." },
-      { status: 401 }
-    );
-  }
-
-  if (isApiKeyCall && !hasScope(subject!, "copy:write")) {
-    return NextResponse.json(
-      { error: "API key missing required scope: copy:write" },
-      { status: 403 }
-    );
-  }
-
-  // Copy is cheaper per-call than strategy but a typical session
-  // generates 7 (one per calendar entry). Budget: 60 / hour — covers
-  // 8 full calendars in an hour with headroom for retries.
+  // Rate-limit by IP — no accounts or API keys to key on. Copy is cheaper
+  // per-call than strategy but a typical session generates 7 (one per
+  // calendar entry). Budget: 60 / hour — covers 8 full calendars with
+  // headroom for retries.
   const rl = await checkRateLimit(
-    rateLimitKey({
-      prefix: "copy",
-      userId: subject?.userId ?? null,
-      apiKeyId: subject?.apiKeyId ?? null,
-      req,
-    }),
+    rateLimitKey({ prefix: "copy", userId: null, apiKeyId: null, req }),
     60,
     60 * 60 * 1000
   );
@@ -69,30 +49,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "kerf and entry are required." }, { status: 400 });
   }
   const { kerf, entry } = parsed.data;
-  // Demo is anonymous-only; API-key callers never get canned copy. Read off
-  // the validated shape rather than the raw parsed body.
-  const demoRequested = !isApiKeyCall && parsed.data.demo === true;
+  const demoRequested = parsed.data.demo === true;
   const byokKey = extractByokKey(req);
   const noKeyAvailable = !byokKey && !hasAnthropicKey();
 
-  // API-key callers must NEVER silently get canned demo content when they
-  // asked for live inference. See /api/strategy for full rationale.
-  if (isApiKeyCall && noKeyAvailable && !demoRequested) {
+  // On-ramp is demo OR a key. If the caller asked for live copy without a
+  // BYOK key and this instance has no server key, return a clear 401.
+  if (!demoRequested && noKeyAvailable) {
     return NextResponse.json(
       {
         error:
-          "Inference unavailable: no Anthropic key. Pass `X-Anthropic-Key` (BYOK) or contact support.",
-      },
-      { status: 503 }
-    );
-  }
-
-  // Anonymous gating: demo OR BYOK. See /api/strategy for full rationale.
-  if (subject === null && !demoRequested && !byokKey) {
-    return NextResponse.json(
-      {
-        error:
-          "Live inference requires either a BYOK Anthropic key (`X-Anthropic-Key` header) or authentication (`Authorization: Bearer cmo_live_...`). For demo content, set `demo: true`.",
+          "Live inference requires your own Anthropic key (`X-Anthropic-Key` header, BYOK) or a Claude MCP connection. For canned content, set `demo: true`.",
       },
       { status: 401 }
     );
@@ -102,13 +69,6 @@ export async function POST(req: Request) {
 
   if (useDemo) {
     await new Promise((r) => setTimeout(r, 700));
-    void logApiCall({
-      subject,
-      endpoint: "/api/copy",
-      status: 200,
-      durationMs: Date.now() - startedAt,
-      byok: false,
-    });
     return NextResponse.json({ copy: DEMO_COPY });
   }
 
@@ -140,48 +100,20 @@ export async function POST(req: Request) {
       if (!extracted) throw new Error("no balanced json");
       rawCopy = JSON.parse(extracted);
     } catch {
-      void logApiCall({
-        subject,
-        endpoint: "/api/copy",
-        status: 502,
-        durationMs: Date.now() - startedAt,
-        byok: !!byokKey,
-      });
       return NextResponse.json({ error: "Model did not return valid JSON." }, { status: 502 });
     }
 
     const validated = CopySchema.safeParse(rawCopy);
     if (!validated.success) {
-      void logApiCall({
-        subject,
-        endpoint: "/api/copy",
-        status: 502,
-        durationMs: Date.now() - startedAt,
-        byok: !!byokKey,
-      });
       return NextResponse.json({ error: "Model returned malformed copy." }, { status: 502 });
     }
 
-    void logApiCall({
-      subject,
-      endpoint: "/api/copy",
-      status: 200,
-      durationMs: Date.now() - startedAt,
-      byok: !!byokKey,
-    });
     return NextResponse.json({ copy: validated.data });
   } catch (err) {
     // Log the full error server-side (with secret scrubbing) and return
     // a generic message. SDK error strings can include org IDs, request
     // IDs, partial prompt fragments — none of which clients need.
     console.error("[/api/copy] failed", sanitizeForLog(err));
-    void logApiCall({
-      subject,
-      endpoint: "/api/copy",
-      status: 500,
-      durationMs: Date.now() - startedAt,
-      byok: !!byokKey,
-    });
     return NextResponse.json(
       { error: "Inference failed. Please retry." },
       { status: 500 }

@@ -2,9 +2,11 @@ import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/site";
 
 /**
- * Public, indexable routes only. The app, archive, and per-user/API routes
- * are auth-gated or user-scoped and stay out of the sitemap (and are
- * disallowed in robots.ts). Add new public marketing pages here.
+ * Public, indexable routes only. The app, archive, and API routes render
+ * browser-local state (the kerf you're cutting, your localStorage archive)
+ * or machine endpoints — nothing a crawler should index — so they stay out
+ * of the sitemap (and are disallowed in robots.ts). Add new public
+ * marketing pages here.
  */
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();

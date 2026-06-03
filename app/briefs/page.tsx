@@ -1,65 +1,81 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { getSupabaseServer } from "@/lib/supabase";
-import { currentUserIdOrNull } from "@/lib/auth";
 import { ACCENT, ACCENT_DIM, MUTED } from "@/components/cmo/shared";
-import AuthButtons from "@/components/cmo/AuthButtons";
+import {
+  listArchive,
+  deleteArchived,
+  clearArchive,
+  importToArchive,
+  type ArchivedKerf,
+} from "@/lib/archive";
+import { parseKerfJson } from "@/lib/export";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+/**
+ * Browser-local archive index. kerf.box is account-free — saved kerfs live
+ * only in this browser's localStorage (see lib/archive.ts), so this is a
+ * client component that reads on mount. Nothing is fetched from a server.
+ *
+ * Supports importing a kerf from a previously-exported `.json` file, which
+ * is how a kerf moves between browsers/devices without an account.
+ */
+export default function ArchivePage() {
+  const [entries, setEntries] = useState<ArchivedKerf[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-// The brief_json column holds either v0.2 Kerf or v0.1 Brief shape.
-// We just want a one-line label, so we check for both fields and fall
-// back to a dash. Strict parse happens on the detail page.
-type Row = {
-  id: string;
-  url: string;
-  audience: string;
-  created_at: string;
-  brief_json: {
-    wedge?: { claim?: string };
-    positioning?: { angle?: string };
-  } | null;
-};
+  const refresh = () => setEntries(listArchive());
 
-function rowLabel(row: Row): { label: string; legacy: boolean } {
-  const claim = row.brief_json?.wedge?.claim;
-  if (claim) return { label: claim, legacy: false };
-  const angle = row.brief_json?.positioning?.angle;
-  if (angle) return { label: angle, legacy: true };
-  return { label: "—", legacy: false };
-}
+  useEffect(() => {
+    refresh();
+    setLoaded(true);
+  }, []);
 
-export default async function ArchivePage() {
-  const supabase = getSupabaseServer();
-  const userId = await currentUserIdOrNull();
+  const onDelete = (id: string) => {
+    deleteArchived(id);
+    refresh();
+  };
 
-  let rows: Row[] = [];
-  let emptyMessage: string | null = null;
-  let dbErrored = false;
-  if (!supabase) {
-    emptyMessage = "Persistence not configured. Add Supabase env vars to see saved kerfs.";
-  } else if (!userId) {
-    emptyMessage = "Sign in required. Configure Clerk to view your saved kerfs.";
-  } else {
-    const { data, error } = await supabase
-      .from("briefs")
-      .select("id, url, audience, brief_json, created_at")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(50);
-    // A failed read previously masqueraded as "No kerfs yet" — the worst
-    // possible UX for a paying user staring at what looks like a wiped
-    // archive. Render a distinct error state and log server-side. We
-    // deliberately don't surface the raw Postgres message: that can
-    // include schema hints (column names, constraint names) and is
-    // useless to the user anyway.
-    if (error) {
-      console.error("[/briefs] supabase select failed", error);
-      dbErrored = true;
-    } else {
-      rows = (data as Row[] | null) ?? [];
+  const onClearAll = () => {
+    if (
+      typeof window !== "undefined" &&
+      window.confirm("Clear every saved kerf from this browser? This can't be undone.")
+    ) {
+      clearArchive();
+      refresh();
     }
-  }
+  };
+
+  const onImportClick = () => {
+    setImportError(null);
+    fileRef.current?.click();
+  };
+
+  const onFileChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Reset the input so choosing the same file twice still fires onChange.
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = parseKerfJson(text);
+      if (!parsed) {
+        setImportError("That file isn't a valid kerf export.");
+        return;
+      }
+      const saved = importToArchive(parsed);
+      if (!saved) {
+        setImportError("Couldn't save the imported kerf to this browser.");
+        return;
+      }
+      setImportError(null);
+      refresh();
+    } catch {
+      setImportError("Couldn't read that file.");
+    }
+  };
 
   return (
     <div className="min-h-screen w-full">
@@ -80,11 +96,34 @@ export default async function ArchivePage() {
                 className="mono text-[10px] uppercase tracking-widest"
                 style={{ color: MUTED }}
               >
-                Archive
+                Archive · this browser
               </div>
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json,.json"
+              onChange={onFileChosen}
+              className="hidden"
+            />
+            <button
+              onClick={onImportClick}
+              className="mono text-[11px] uppercase tracking-widest px-3 py-2 border"
+              style={{ borderColor: ACCENT_DIM, color: MUTED }}
+            >
+              import .json
+            </button>
+            {entries.length > 0 && (
+              <button
+                onClick={onClearAll}
+                className="mono text-[11px] uppercase tracking-widest px-3 py-2 border"
+                style={{ borderColor: ACCENT_DIM, color: MUTED }}
+              >
+                clear all
+              </button>
+            )}
             <Link
               href="/app"
               className="mono text-[11px] uppercase tracking-widest px-3 py-2 border"
@@ -92,77 +131,85 @@ export default async function ArchivePage() {
             >
               ← new kerf
             </Link>
-            <AuthButtons />
           </div>
         </header>
 
-        {emptyMessage ? (
+        <p className="text-sm mb-8 max-w-2xl" style={{ color: MUTED }}>
+          Saved kerfs live only in this browser — no account, nothing on a
+          server. Export a kerf as <span style={{ color: ACCENT }}>.json</span>{" "}
+          to keep it for good or open it on another device, then{" "}
+          <span style={{ color: ACCENT }}>import .json</span> here.
+        </p>
+
+        {importError && (
+          <div
+            className="mb-6 p-3 mono text-[11px] uppercase tracking-widest"
+            style={{ border: `1px dashed ${ACCENT}`, color: ACCENT }}
+          >
+            {importError}
+          </div>
+        )}
+
+        {!loaded ? null : entries.length === 0 ? (
           <div
             className="mono text-xs uppercase tracking-widest py-16 text-center"
             style={{ color: MUTED }}
           >
-            {emptyMessage}
-          </div>
-        ) : dbErrored ? (
-          <div
-            className="mono text-xs uppercase tracking-widest py-16 text-center"
-            style={{ color: ACCENT }}
-          >
-            Archive temporarily unavailable. Refresh in a moment, or check status.
-          </div>
-        ) : rows.length === 0 ? (
-          <div
-            className="mono text-xs uppercase tracking-widest py-16 text-center"
-            style={{ color: MUTED }}
-          >
-            No kerfs yet. Cut one from /app.
+            No kerfs in this browser yet. Cut one from{" "}
+            <Link href="/app" className="underline" style={{ color: ACCENT }}>
+              /app
+            </Link>
+            , or import a .json export.
           </div>
         ) : (
           <ul className="divide-y" style={{ borderColor: ACCENT_DIM }}>
-            {rows.map((row) => {
-              const { label, legacy } = rowLabel(row);
-              const when = new Date(row.created_at).toLocaleDateString("en-US", {
+            {entries.map((entry) => {
+              const label = entry.kerf.wedge?.claim || entry.kerf.company_summary || "—";
+              const when = new Date(entry.createdAt).toLocaleDateString("en-US", {
                 month: "short",
                 day: "numeric",
                 year: "numeric",
               });
               return (
-                <li key={row.id} className="py-5">
-                  <Link href={`/brief/${row.id}`} className="block group">
-                    <div className="flex items-baseline justify-between gap-6 mb-1">
-                      <div
-                        className="mono text-[10px] uppercase tracking-widest flex items-center gap-2"
-                        style={{ color: ACCENT }}
-                      >
-                        <span>{when}</span>
-                        {legacy && (
-                          <span
-                            className="px-1.5 py-0.5"
-                            style={{
-                              border: `1px dashed ${ACCENT_DIM}`,
-                              color: MUTED,
-                            }}
-                          >
-                            v0.1
-                          </span>
-                        )}
-                      </div>
-                      <div
-                        className="mono text-[10px] uppercase tracking-widest truncate"
-                        style={{ color: MUTED }}
-                      >
-                        {row.url}
-                      </div>
+                <li key={entry.id} className="py-5">
+                  <div className="flex items-baseline justify-between gap-6 mb-1">
+                    <div
+                      className="mono text-[10px] uppercase tracking-widest"
+                      style={{ color: ACCENT }}
+                    >
+                      {when}
                     </div>
+                    <div className="flex items-center gap-4">
+                      {entry.url && (
+                        <div
+                          className="mono text-[10px] uppercase tracking-widest truncate max-w-[40vw]"
+                          style={{ color: MUTED }}
+                        >
+                          {entry.url}
+                        </div>
+                      )}
+                      <button
+                        onClick={() => onDelete(entry.id)}
+                        className="mono text-[10px] uppercase tracking-widest"
+                        style={{ color: MUTED }}
+                        aria-label="delete this kerf"
+                      >
+                        delete
+                      </button>
+                    </div>
+                  </div>
+                  <Link href={`/brief/${entry.id}`} className="block group">
                     <div
                       className="serif text-lg md:text-xl group-hover:underline"
                       style={{ fontWeight: 500 }}
                     >
                       {label}
                     </div>
-                    <div className="text-sm mt-1" style={{ color: MUTED }}>
-                      {row.audience}
-                    </div>
+                    {entry.audience && (
+                      <div className="text-sm mt-1" style={{ color: MUTED }}>
+                        {entry.audience}
+                      </div>
+                    )}
                   </Link>
                 </li>
               );

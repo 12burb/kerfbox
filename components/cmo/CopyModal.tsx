@@ -80,8 +80,6 @@ export default function CopyModal({ entry, copy, loading, error, onClose, onRetr
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
   // Modal lifecycle: lock body scroll, capture/restore focus, wire Esc.
-  // Mirrors CreatedKeyModal in /app/keys/page.tsx — keep them aligned so
-  // both surfaces feel like the same product.
   useEffect(() => {
     previouslyFocused.current = document.activeElement as HTMLElement | null;
     closeBtnRef.current?.focus();

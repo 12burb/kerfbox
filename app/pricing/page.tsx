@@ -20,9 +20,9 @@ const BG_2 = "#121215";
 const FREE_FEATURES = [
   "Unlimited kerfs with your own Anthropic key (BYOK)",
   "Or connect it to Claude over the MCP server — no key to paste",
-  "Full REST API + MCP server for agents",
-  "Save kerfs to your archive and reference them later",
-  "Mint & scope API keys",
+  "Full REST API + MCP server for agents — no account, no API key",
+  "Save kerfs in your browser; export & import as JSON to share",
+  "No sign-up — every page is public",
   "The refusal engine — undefendable strategy is rejected",
   "Open source. Self-host the whole thing.",
 ];

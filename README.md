@@ -5,10 +5,12 @@
 [kerf.box](https://kerfbox.vercel.app) maps where a category clusters today,
 finds the narrow defensible cut between those clusters, and ships a wedge with a
 structural moat. If the moat doesn't hold, **the system refuses to ship** — it
-returns `422` with a reason instead of generating undefendable positioning.
+emits an `error` with a reason instead of generating undefendable positioning.
 
 It's a web app, a public JSON API, and an MCP server, so a human or an agent can
-cut a kerf the same way.
+cut a kerf the same way. It is **account-free**: no login, no API key, and no
+server-side database. You bring your own Anthropic key (BYOK) for live inference,
+saved kerfs live in your browser, and you can self-host the whole thing.
 
 ---
 
@@ -33,11 +35,12 @@ prompt.
 ## Stack
 
 - **Next.js 15** (App Router, React 19) on **Vercel**
-- **Clerk** for auth (Google sign-in)
-- **Supabase** (Postgres) for persistence, service-role + RLS deny-all
-- **Anthropic** Claude for inference (research + copy), with **BYOK** support
-- **Upstash Redis** (or Vercel KV) for distributed rate limiting; falls back to
-  an in-memory limiter when unconfigured
+- **No accounts, no database** — every page is public; saved kerfs live in the
+  browser's `localStorage`, with JSON export/import to move them between devices
+- **Anthropic** Claude for inference (research + copy), **BYOK** — the caller's
+  own key is passed per request and never stored, logged, or proxied
+- **Upstash Redis** (or Vercel KV) for distributed, per-IP rate limiting; falls
+  back to an in-memory limiter when unconfigured
 - **MCP server** published as [`@kerfbox/mcp`](packages/mcp)
 
 ---
@@ -53,38 +56,24 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-The app degrades gracefully when integrations are missing: with no Clerk keys it
-renders without auth, with no Anthropic key it serves demo content, and with no
-Upstash config it rate-limits in memory. None of the secrets below are required
-just to boot the UI.
+There are no required secrets — kerf.box is account-free, so it boots with
+nothing configured. With no Anthropic key it serves demo content (callers bring
+their own key per request via BYOK), and with no Upstash config it rate-limits
+in memory. Everything below is optional.
 
 ### Environment variables
 
 Create `.env.local` (never commit it — `.env*.local` is gitignored). In
-production these live in Vercel project settings, stored as Sensitive.
+production these live in Vercel project settings, stored as Sensitive. See
+[`.env.example`](.env.example) for the full annotated list.
 
-**Inference**
+**Inference (optional)**
 
 | Variable | Purpose |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | Server-side Anthropic key. Without it, routes serve demo content unless the caller brings their own key (BYOK). |
+| `ANTHROPIC_API_KEY` | Optional server-side Anthropic key for self-hosting. Without it, the hosted model is BYOK-only: live calls must carry the caller's own key, and demo content is served otherwise. |
 | `KERFBOX_STRATEGY_MODEL` | Optional. Override the strategy/research model. |
 | `KERFBOX_COPY_MODEL` | Optional. Override the copy model. |
-
-**Auth (Clerk)**
-
-| Variable | Purpose |
-| --- | --- |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key. |
-| `CLERK_SECRET_KEY` | Clerk secret key. |
-
-**Database (Supabase)**
-
-| Variable | Purpose |
-| --- | --- |
-| `SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_URL` | Project URL. |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server-only service-role key (never exposed to the client). |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Anon key (optional; client reads go through the API). |
 
 **Rate limiting (optional)**
 
@@ -93,15 +82,16 @@ production these live in Vercel project settings, stored as Sensitive.
 | `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Upstash REST limiter. |
 | `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Vercel KV alternative. |
 
-**Site**
+**Site (optional)**
 
 | Variable | Purpose |
 | --- | --- |
 | `NEXT_PUBLIC_SITE_URL` | Canonical origin for metadata/sitemap. Defaults to `https://kerfbox.vercel.app`. |
 
-> Note: `CMOBOX_*` and `KERFBOX_API_KEY`/`KERFBOX_BASE_URL` names are accepted as
-> back-compat aliases for tooling configured before the rename. New setups should
-> use the names above.
+> Note: the MCP server also accepts `CMOBOX_BASE_URL` as a back-compat alias for
+> `KERFBOX_BASE_URL`, and the legacy `ANTHROPIC_API_KEY` name for its BYOK key
+> (it prefers `KERFBOX_BYOK_ANTHROPIC_KEY`). New setups should use the namespaced
+> names. See [`packages/mcp`](packages/mcp).
 
 ---
 
@@ -110,29 +100,24 @@ production these live in Vercel project settings, stored as Sensitive.
 Base URL: `https://kerfbox.vercel.app`. OpenAPI 3.1 spec at
 [`/api/openapi.json`](https://kerfbox.vercel.app/api/openapi.json).
 
-**Auth** — either a Clerk session (browser) or an API key:
-
-```
-Authorization: Bearer cmo_live_...
-```
-
-Keys are minted in the app at `/app/keys`, scoped (`copy:write`, `briefs:read`,
-`briefs:write`, …), and stored only as a one-way hash. **BYOK:** pass
-`X-Anthropic-Key` on any inference call to use your own Anthropic key — it is
-never stored, logged, or proxied anywhere readable.
+**The API is open** — no login and no API key. For live inference, pass your own
+Anthropic key per request via the `X-Anthropic-Key` header (BYOK); it is never
+stored, logged, or proxied anywhere readable. Or set `"demo": true` in the body
+for canned content with no key. Rate limiting is per-IP.
 
 | Endpoint | Method | Description |
 | --- | --- | --- |
-| `/api/strategy` | POST | Cut a kerf (streams the cluster map → kerf → wedge). |
+| `/api/strategy` | POST | Cut a kerf (SSE stream: cluster map → kerf → wedge). |
 | `/api/copy` | POST | Generate platform copy for one calendar entry. |
-| `/api/briefs` | GET / POST | List or save kerfs to your archive. |
-| `/api/keys` | GET / POST | List or mint API keys (session-only). |
+
+Saving a kerf happens client-side in the browser (`localStorage`) — there are no
+archive endpoints on the server.
 
 Example:
 
 ```bash
 curl -N https://kerfbox.vercel.app/api/strategy \
-  -H "Authorization: Bearer cmo_live_..." \
+  -H "X-Anthropic-Key: sk-ant-..." \
   -H "Content-Type: application/json" \
   -d '{"url":"https://example.com","audience":"indie founders"}'
 ```
@@ -148,8 +133,9 @@ the Model Context Protocol:
 npx -y @kerfbox/mcp
 ```
 
-Tools: `cut_kerf`, `generate_copy`, `list_kerfs`, `get_kerf`. BYOK works on every
-tool. See [`packages/mcp`](packages/mcp) for configuration.
+Tools: `cut_kerf` and `generate_copy`. No API key needed; set
+`KERFBOX_BYOK_ANTHROPIC_KEY` for live inference or call with `demo: true`. See
+[`packages/mcp`](packages/mcp) for configuration.
 
 ---
 
@@ -157,9 +143,10 @@ tool. See [`packages/mcp`](packages/mcp) for configuration.
 
 - Input URLs are validated to `http(s)` schemes only (SSRF/XSS guard).
 - Request bodies are size-capped before parsing (DoS guard).
-- State-changing session endpoints enforce a CSRF Origin check; key-management
-  endpoints are session-only and can't be driven by a Bearer token.
-- API keys are hashed; secrets are scrubbed from logs.
+- The API is open and rate-limited per IP — there are no sessions, accounts, or
+  stored credentials to protect.
+- BYOK keys are used for a single request and never stored or proxied; secrets
+  (`sk-ant-…`, `X-Anthropic-Key`, etc.) are scrubbed from logs.
 - Security headers (CSP, `frame-ancestors`, etc.) are set in `next.config.mjs`.
 
 Found a vulnerability? Please report it via the

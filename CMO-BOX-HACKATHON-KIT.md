@@ -1,5 +1,13 @@
 # CMO-in-a-Box — Hackathon Kit
 
+> **Historical artifact.** This is the original hackathon planning doc, kept for
+> provenance. The shipped product diverged: it's now **kerf.box**, the artifact
+> is a **Kerf** (not a "brief"), and it is **account-free** — there is no
+> Supabase, no Clerk, and no server-side persistence. Saved kerfs live in the
+> browser's `localStorage`, and live inference runs on the caller's own
+> Anthropic key (BYOK). The Supabase/Clerk "production path" notes below were
+> never taken. See [`README.md`](README.md) for how it actually works.
+
 **Tagline:** Strategy before copy.
 
 **One-liner:** Jasper is a calculator for marketers who already know the math problem. CMO-in-a-Box tells you what math problem to solve.

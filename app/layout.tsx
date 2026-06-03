@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { ClerkProvider } from "@clerk/nextjs";
 import {
   SITE_URL,
   SITE_NAME,
@@ -60,10 +59,6 @@ export const metadata: Metadata = {
   category: "technology",
 };
 
-const hasClerk = !!(
-  process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-);
-
 /**
  * Site-wide structured data. SoftwareApplication tells search/LLM indexes
  * what kerf.box *is* and that it has a free (beta) tier; the nested
@@ -115,7 +110,9 @@ const structuredData = {
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  const body = (
+  // Account-free: no auth provider wraps the tree. Pages are public and the
+  // API authorizes per-request on the caller's own Anthropic key (BYOK).
+  return (
     <html lang="en">
       <body className="antialiased">
         <script
@@ -127,40 +124,5 @@ export default function RootLayout({
         {children}
       </body>
     </html>
-  );
-  if (!hasClerk) return body;
-  return (
-    <ClerkProvider
-      // Dedicated routes (app/sign-in, app/sign-up) so Clerk's
-      // auth.protect() in middleware redirects there instead of returning
-      // a bare 404 to logged-out visitors. Modal sign-in in the header still
-      // works alongside these.
-      signInUrl="/sign-in"
-      signUpUrl="/sign-up"
-      // Where to land after auth when there's no explicit return URL.
-      signInFallbackRedirectUrl="/app"
-      signUpFallbackRedirectUrl="/app"
-      // Where the avatar menu's "Sign out" returns to. In Clerk v7 this is a
-      // ClerkProvider prop, not a UserButton prop.
-      afterSignOutUrl="/"
-      // Brand the hosted Clerk UI (modals, sign-in/up pages, the avatar
-      // menu) to match the app: red accent on near-black, squared corners.
-      // Variables-only so it survives Clerk element-key churn between
-      // versions — no @clerk/themes dependency needed.
-      appearance={{
-        variables: {
-          colorPrimary: "#ff1744",
-          colorBackground: "#121215",
-          colorText: "#f5f1e8",
-          colorTextSecondary: "#7a7a82",
-          colorInputBackground: "#0a0a0c",
-          colorInputText: "#f5f1e8",
-          colorNeutral: "#f5f1e8",
-          borderRadius: "0px",
-        },
-      }}
-    >
-      {body}
-    </ClerkProvider>
   );
 }

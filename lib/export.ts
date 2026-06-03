@@ -1,4 +1,4 @@
-import type { Kerf } from "./schema";
+import { KerfSchema, type Kerf } from "./schema";
 
 /**
  * Escape characters that would break out of a markdown inline-link's
@@ -170,6 +170,116 @@ export const briefToMarkdown = kerfToMarkdown;
  * @deprecated Use kerfSlug.
  */
 export const briefSlug = kerfSlug;
+
+/* ------------------------------------------------------------------ *
+ * Portable JSON export / import
+ *
+ * kerf.box has no server database — a kerf is shared by handing someone
+ * the JSON file, not a URL (a full Kerf is ~10-30 KB, well past what a
+ * shareable link can reliably carry). The envelope below is the portable
+ * artifact: self-describing (`format` tag), round-trippable, and validated
+ * on import against KerfSchema so a tampered or stale file can't crash the
+ * viewer.
+ * ------------------------------------------------------------------ */
+
+/** Current export envelope version. Bump if the Kerf schema breaks compat. */
+export const KERF_EXPORT_FORMAT = "kerf.box/v0.2";
+
+export type KerfExport = {
+  format: string;
+  exportedAt: number;
+  url: string;
+  audience: string;
+  kerf: Kerf;
+};
+
+/**
+ * Serialize a kerf (plus its originating url/audience) into the portable
+ * envelope as a pretty-printed JSON string.
+ */
+export function kerfToJson(
+  kerf: Kerf,
+  meta?: { url?: string; audience?: string; exportedAt?: number }
+): string {
+  const envelope: KerfExport = {
+    format: KERF_EXPORT_FORMAT,
+    exportedAt: meta?.exportedAt ?? Date.now(),
+    url: meta?.url ?? "",
+    audience: meta?.audience ?? "",
+    kerf,
+  };
+  return JSON.stringify(envelope, null, 2);
+}
+
+/**
+ * Parse imported JSON back into {url, audience, kerf}. Accepts either the
+ * full export envelope OR a bare Kerf object (so a kerf copied from the API
+ * also imports cleanly). Returns null if the payload doesn't contain a
+ * schema-valid Kerf. Never throws.
+ */
+export function parseKerfJson(
+  text: string
+): { url: string; audience: string; kerf: Kerf } | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as Record<string, unknown>;
+
+  // Envelope form: { format, kerf, url, audience }. Bare form: the object
+  // IS the kerf. Try the nested kerf first, then the object itself.
+  const candidate = "kerf" in obj ? obj.kerf : obj;
+  const parsed = KerfSchema.safeParse(candidate);
+  if (!parsed.success) return null;
+
+  const url = typeof obj.url === "string" ? obj.url : "";
+  const audience = typeof obj.audience === "string" ? obj.audience : "";
+  return { url, audience, kerf: parsed.data };
+}
+
+/**
+ * Trigger a download of a kerf as a `.json` file. Client-side only.
+ */
+export function downloadKerfJson(
+  kerf: Kerf,
+  meta?: { url?: string; audience?: string }
+) {
+  downloadText(`${kerfSlug(kerf)}.kerf.json`, kerfToJson(kerf, meta), "application/json");
+}
+
+/**
+ * Copy text to the clipboard. Returns whether it succeeded. Uses the async
+ * Clipboard API where available (HTTPS / localhost), falling back to a
+ * hidden-textarea + execCommand for older/insecure contexts. Client-side
+ * only.
+ */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // fall through to legacy path
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Trigger a browser download of a string as a file.

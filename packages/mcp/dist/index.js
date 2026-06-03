@@ -4,17 +4,19 @@
  *
  * Exposes the Kerf method as MCP tools to MCP-aware agents (Claude Desktop,
  * Cursor, Continue, custom Agent SDK builds, etc.). All inference runs against
- * the kerf.box backend; the user's KERFBOX_API_KEY (alias: CMOBOX_API_KEY)
- * authorizes the call and an optional ANTHROPIC_API_KEY (BYOK) lets the user
- * pay Anthropic directly instead of consuming the kerf.box quota.
+ * the kerf.box backend.
  *
- * Required env (either name works — KERFBOX_* takes precedence):
- *   KERFBOX_API_KEY   — issued from https://kerfbox.vercel.app/app/keys
- *   CMOBOX_API_KEY    — legacy alias, still honored
+ * kerf.box is account-free: there is NO API key to issue and no login. Live
+ * inference runs on your OWN Anthropic key (BYOK), passed through per call
+ * and never stored by kerf.box. Without a key you can still call the tools
+ * with `demo: true` for canned content.
  *
  * Optional env:
- *   ANTHROPIC_API_KEY — your own Anthropic key. When set, inference uses it
- *                       (BYOK) and you pay Anthropic directly.
+ *   KERFBOX_BYOK_ANTHROPIC_KEY — your own Anthropic key (BYOK). Required for
+ *                       live (non-demo) inference. Preferred over the bare
+ *                       ANTHROPIC_API_KEY so this server doesn't collide with
+ *                       an Anthropic key another tool reads from the global env.
+ *   ANTHROPIC_API_KEY — legacy fallback for the BYOK key (emits a warning).
  *   KERFBOX_BASE_URL  — override for self-hosted or staging; defaults to
  *                       https://kerfbox.vercel.app
  *   CMOBOX_BASE_URL   — legacy alias.
@@ -35,7 +37,6 @@ const PKG = JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.ur
 const BASE_URL = process.env.KERFBOX_BASE_URL ??
     process.env.CMOBOX_BASE_URL ??
     "https://kerfbox.vercel.app";
-const API_KEY = process.env.KERFBOX_API_KEY ?? process.env.CMOBOX_API_KEY;
 // BYOK: prefer the namespaced env (KERFBOX_BYOK_ANTHROPIC_KEY) so this
 // server doesn't collide with an unrelated Anthropic key the user has
 // in their global env for some other tool. Fall back to the bare name
@@ -46,28 +47,22 @@ if (!process.env.KERFBOX_BYOK_ANTHROPIC_KEY && process.env.ANTHROPIC_API_KEY) {
         "KERFBOX_BYOK_ANTHROPIC_KEY in your MCP host config to avoid " +
         "colliding with other tools that read ANTHROPIC_API_KEY.\n");
 }
-const MISSING_KEY_HINT = "KERFBOX_API_KEY (or legacy CMOBOX_API_KEY) is not set. Issue one at " +
-    "https://kerfbox.vercel.app/app/keys and add it to the `env` block of " +
-    "your MCP host config (Claude Desktop, Cursor, etc.), then restart.";
-// Surface the warning early so a developer running the server interactively
-// sees it on stderr. We do NOT exit here — exiting kills the transport
-// before the host can read tools/list, and the user just sees an opaque
-// "server failed to start" message. Instead we keep the server alive and
-// fail individual tool calls with a clear, actionable error.
-if (!API_KEY) {
-    process.stderr.write(`[kerfbox-mcp] ${MISSING_KEY_HINT}\n`);
+// kerf.box is account-free, so the only credential is your own Anthropic
+// key (BYOK). Without it, live inference returns 401 and only `demo: true`
+// calls succeed. Warn early so a developer running interactively understands
+// why a live call might fail — but never exit: a demo-only session is valid.
+if (!BYOK) {
+    process.stderr.write("[kerfbox-mcp] no Anthropic key set (KERFBOX_BYOK_ANTHROPIC_KEY). " +
+        "Live inference will fail with 401 — set your own key for live runs, " +
+        "or call tools with demo:true for canned content.\n");
 }
 function authHeaders() {
-    if (!API_KEY) {
-        // Thrown errors bubble to the tool's try/catch and become isError
-        // responses, so the MCP host shows the message verbatim.
-        throw new Error(MISSING_KEY_HINT);
-    }
     const h = {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${API_KEY}`,
         "User-Agent": `kerfbox-mcp/${PKG.version}`,
     };
+    // BYOK is the only credential. The backend authorizes per-request on this
+    // header (or runs demo content if it's absent and demo:true was passed).
     if (BYOK)
         h["X-Anthropic-Key"] = BYOK;
     return h;
@@ -179,33 +174,6 @@ async function generateCopy(args) {
         throw new Error(json.error);
     return json.copy;
 }
-async function listKerfs() {
-    const res = await fetch(`${BASE_URL}/api/briefs`, {
-        method: "GET",
-        headers: authHeaders(),
-    });
-    if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(`/api/briefs failed (${res.status}): ${txt.slice(0, 500)}`);
-    }
-    // Backend returns `{kerfs, briefs}` (briefs is a v0.1 alias). Prefer kerfs.
-    const json = (await res.json());
-    return json.kerfs ?? json.briefs ?? [];
-}
-async function getKerf(args) {
-    const res = await fetch(`${BASE_URL}/api/briefs/${encodeURIComponent(args.id)}`, {
-        method: "GET",
-        headers: authHeaders(),
-    });
-    if (!res.ok) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(`/api/briefs/${args.id} failed (${res.status}): ${txt.slice(0, 500)}`);
-    }
-    const json = (await res.json());
-    if (json.error)
-        throw new Error(json.error);
-    return json.kerf ?? json.brief;
-}
 /* ---------------------------------------------------------------------- */
 /* Argument schemas                                                        */
 /*                                                                         */
@@ -229,10 +197,6 @@ const GenerateCopyArgs = z.object({
     entry: z.record(z.string(), z.unknown()),
     demo: z.boolean().optional(),
 });
-const GetKerfArgs = z.object({
-    id: z.string().min(1, "id is required"),
-});
-const ListKerfsArgs = z.object({}).strict();
 function parseArgs(schema, args, toolName) {
     const parsed = schema.safeParse(args ?? {});
     if (!parsed.success) {
@@ -246,10 +210,13 @@ function parseArgs(schema, args, toolName) {
 /* ---------------------------------------------------------------------- */
 /* MCP wiring                                                              */
 /*                                                                         */
-/* Tool surface uses the v0.2 names (cut_kerf, list_kerfs, get_kerf) but   */
-/* we ALSO advertise the v0.1 names (generate_brief, list_briefs,          */
-/* get_brief) as deprecated aliases so existing agent configs keep working */
-/* through the deprecation window. Aliases are routed to the same impls.   */
+/* Tool surface uses the v0.2 name (cut_kerf) but we ALSO advertise the    */
+/* v0.1 name (generate_brief) as a deprecated alias so existing agent      */
+/* configs keep working. The alias routes to the same impl.                */
+/*                                                                         */
+/* There are no list/get tools: kerf.box has no server archive. Saved      */
+/* kerfs live in the web app's browser localStorage; agents persist        */
+/* whatever cut_kerf returns themselves.                                   */
 /* ---------------------------------------------------------------------- */
 const TOOLS = [
     {
@@ -258,8 +225,8 @@ const TOOLS = [
             "the category clusters today (named competitors), names the narrow " +
             "defensible cut between clusters, and ships a wedge with a structural " +
             "moat that names a specific competitor and explains why they can't " +
-            "follow. If the moat is undefendable, the route returns 422 with a " +
-            "reason — the brand POV is enforced in code. Returns: {company_summary, " +
+            "follow. If the moat is undefendable, the route refuses with a reason — " +
+            "the brand POV is enforced in code. Returns: {company_summary, " +
             "cluster_map, kerf, wedge:{claim, proof, moat}, signals, concepts, " +
             "calendar}.",
         inputSchema: {
@@ -275,7 +242,7 @@ const TOOLS = [
                 },
                 demo: {
                     type: "boolean",
-                    description: "If true, returns a canned demo Kerf without running live research. Use for testing.",
+                    description: "If true, returns a canned demo Kerf without running live research (no key needed). Use for testing.",
                     default: false,
                 },
             },
@@ -303,32 +270,14 @@ const TOOLS = [
                 },
                 demo: {
                     type: "boolean",
-                    description: "If true, returns canned demo copy. Use for testing.",
+                    description: "If true, returns canned demo copy (no key needed). Use for testing.",
                     default: false,
                 },
             },
             required: ["kerf", "entry"],
         },
     },
-    {
-        name: "list_kerfs",
-        description: "List the caller's saved Kerfs (newest first, max 50). Returns an array " +
-            "of {id, url, audience, brief_json, created_at} — brief_json holds the " +
-            "stored Kerf payload (or a legacy v0.1 brief for older rows).",
-        inputSchema: { type: "object", properties: {} },
-    },
-    {
-        name: "get_kerf",
-        description: "Fetch one saved Kerf by id (caller-scoped).",
-        inputSchema: {
-            type: "object",
-            properties: {
-                id: { type: "string", description: "The Kerf id (uuid)." },
-            },
-            required: ["id"],
-        },
-    },
-    // ---- Deprecated v0.1 aliases (still routed to same impls) ----
+    // ---- Deprecated v0.1 alias (still routed to the same impl) ----
     {
         name: "generate_brief",
         description: "(Deprecated v0.1 alias for cut_kerf. Same args, same return. Use cut_kerf.)",
@@ -340,20 +289,6 @@ const TOOLS = [
                 demo: { type: "boolean", default: false },
             },
             required: ["url", "audience"],
-        },
-    },
-    {
-        name: "list_briefs",
-        description: "(Deprecated v0.1 alias for list_kerfs.)",
-        inputSchema: { type: "object", properties: {} },
-    },
-    {
-        name: "get_brief",
-        description: "(Deprecated v0.1 alias for get_kerf.)",
-        inputSchema: {
-            type: "object",
-            properties: { id: { type: "string" } },
-            required: ["id"],
         },
     },
 ];
@@ -373,15 +308,6 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
                 break;
             case "generate_copy":
                 result = await generateCopy(parseArgs(GenerateCopyArgs, args, name));
-                break;
-            case "list_kerfs":
-            case "list_briefs":
-                parseArgs(ListKerfsArgs, args, name);
-                result = await listKerfs();
-                break;
-            case "get_kerf":
-            case "get_brief":
-                result = await getKerf(parseArgs(GetKerfArgs, args, name));
                 break;
             default:
                 throw new Error(`Unknown tool: ${name}`);

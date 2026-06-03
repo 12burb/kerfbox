@@ -1,28 +1,15 @@
-import { NextResponse, type NextRequest, type NextFetchEvent } from "next/server";
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { NextResponse, type NextRequest } from "next/server";
 
-const hasClerk = !!(
-  process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-);
-
-// Page routes get hard middleware protection (redirect to sign-in).
-// API routes do their own dual auth (session OR Bearer cmo_live_...) inside
-// the route handlers so MCP/agent callers can authenticate without a cookie.
-const isProtected = createRouteMatcher([
-  "/brief(.*)",
-  "/briefs(.*)",
-  "/app/keys(.*)",
-]);
-
-const gated = clerkMiddleware(async (auth, req) => {
-  if (isProtected(req)) {
-    await auth.protect();
-  }
-});
-
-export default function middleware(req: NextRequest, event: NextFetchEvent) {
-  if (!hasClerk) return NextResponse.next();
-  return gated(req, event);
+/**
+ * kerf.box is account-free: there is no auth layer to gate routes on.
+ * Every page is public, and the API routes authorize per-request on the
+ * caller's own Anthropic key (BYOK) — there are no sessions or server-side
+ * accounts to protect. This middleware is a deliberate pass-through; it
+ * exists only so the matcher config stays colocated if we ever add edge
+ * logic (headers, redirects) later.
+ */
+export function middleware(_req: NextRequest) {
+  return NextResponse.next();
 }
 
 export const config = {

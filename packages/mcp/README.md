@@ -4,27 +4,31 @@ MCP server for [kerf.box](https://kerfbox.vercel.app) — strategy is a cut, not
 
 This is the **agentic-as-a-service** entrypoint. Your agent (Claude Desktop,
 Cursor, Continue, custom Agent SDK build, or anything MCP-aware) connects to
-this server and gains four tools:
+this server and gains two tools:
 
 - `cut_kerf` — cut the narrow defensible Kerf between where a category
   clusters and where this brand can stand alone. Returns
-  `{cluster_map, kerf, wedge:{claim, proof, moat}, signals, concepts, calendar}`.
-- `generate_copy` — platform-ready hook/caption/CTA for one calendar entry
-- `list_kerfs` — list your saved Kerfs
-- `get_kerf` — fetch one Kerf by id
+  `{company_summary, cluster_map, kerf, wedge:{claim, proof, moat}, signals, concepts, calendar}`.
+- `generate_copy` — platform-ready hook/caption/CTA for one calendar entry.
 
 The route refuses to ship any Kerf whose `wedge.moat` does not name a
 specific competitor from the cluster map and give a structural reason
 they can't follow. The refusal is the brand POV expressed in code —
-better a clean 422 than a "we'll execute better" non-moat.
+better a clean refusal than a "we'll execute better" non-moat.
 
 Every research finding ships with verifiable web-search citations. All
 output is schema-validated JSON — no string-parsing, no hallucinated URLs.
 
-> **v0.1 → v0.2 deprecation.** The old tool names `generate_brief`,
-> `list_briefs`, and `get_brief` still resolve as deprecated aliases,
-> but new code should use `cut_kerf` / `list_kerfs` / `get_kerf`. The
-> aliases will be removed in v0.3.
+> **Account-free.** kerf.box has no login and no API key to issue. Live
+> inference runs on **your own** Anthropic key (BYOK), passed through per
+> call and never stored. There is no server-side archive — your agent keeps
+> whatever `cut_kerf` returns. The web app saves Kerfs in your browser's
+> localStorage; nothing is persisted on the server.
+
+> **v0.1 → v0.2 deprecation.** The old tool name `generate_brief` still
+> resolves as a deprecated alias of `cut_kerf`, but new code should use
+> `cut_kerf`. The archive tools (`list_kerfs`/`get_kerf`/`list_briefs`/
+> `get_brief`) have been removed — kerf.box no longer keeps a server archive.
 
 ---
 
@@ -36,11 +40,10 @@ output is schema-validated JSON — no string-parsing, no hallucinated URLs.
 
 ## Configure
 
-You need an API key from kerf.box:
-
-1. Sign in at https://kerfbox.vercel.app
-2. Go to **/app/keys** (or call `POST /api/keys` with `{ name }`)
-3. Copy the `cmo_live_...` key (shown once, store it in your password manager)
+There is **no API key and no account** — just point your MCP host at the
+server. For live inference, supply your own Anthropic key via
+`KERFBOX_BYOK_ANTHROPIC_KEY`. Without a key, tools still work when called
+with `demo: true` (canned content).
 
 ### Claude Desktop
 
@@ -54,7 +57,6 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`
       "command": "npx",
       "args": ["-y", "@kerfbox/mcp"],
       "env": {
-        "KERFBOX_API_KEY": "cmo_live_...",
         "KERFBOX_BYOK_ANTHROPIC_KEY": "sk-ant-..."
       }
     }
@@ -76,7 +78,6 @@ Add to `.cursor/mcp.json` in your project (or globally):
       "command": "npx",
       "args": ["-y", "@kerfbox/mcp"],
       "env": {
-        "KERFBOX_API_KEY": "cmo_live_...",
         "KERFBOX_BYOK_ANTHROPIC_KEY": "sk-ant-..."
       }
     }
@@ -95,7 +96,6 @@ const agent = new ClaudeAgentSDK({
       command: "npx",
       args: ["-y", "@kerfbox/mcp"],
       env: {
-        KERFBOX_API_KEY: process.env.KERFBOX_API_KEY!,
         KERFBOX_BYOK_ANTHROPIC_KEY: process.env.KERFBOX_BYOK_ANTHROPIC_KEY!,
       },
     },
@@ -107,12 +107,12 @@ const agent = new ClaudeAgentSDK({
 
 ## BYOK (Bring Your Own Key)
 
-If you set `KERFBOX_BYOK_ANTHROPIC_KEY`, all inference uses **your**
-Anthropic key — you pay Anthropic directly. kerf.box charges a flat
-methodology subscription; we never see your tokens.
+kerf.box never bills you and never holds a credential. If you set
+`KERFBOX_BYOK_ANTHROPIC_KEY`, all inference uses **your** Anthropic key —
+you pay Anthropic directly, and the key is passed through per request and
+never stored, logged, or proxied.
 
-If you omit it, kerf.box uses its own pooled key and the call counts
-against your plan's monthly quota.
+If you omit it, only `demo: true` calls succeed; live calls return `401`.
 
 > Legacy `ANTHROPIC_API_KEY` is still honored for back-compat, but
 > emits a stderr warning. Migrate to `KERFBOX_BYOK_ANTHROPIC_KEY` so
@@ -123,14 +123,15 @@ against your plan's monthly quota.
 
 ## Environment
 
-| Variable                        | Required | Description                                                   |
-| ------------------------------- | -------- | ------------------------------------------------------------- |
-| `KERFBOX_API_KEY`               | yes      | API key issued at /app/keys (`cmo_live_...`)                  |
-| `KERFBOX_BYOK_ANTHROPIC_KEY`    | no       | Your Anthropic key for BYOK billing                           |
-| `KERFBOX_BASE_URL`              | no       | Override the API base (default: https://kerfbox.vercel.app) |
-| `CMOBOX_API_KEY` (legacy)       | no       | Alias for `KERFBOX_API_KEY`                                   |
-| `ANTHROPIC_API_KEY` (legacy)    | no       | Alias for `KERFBOX_BYOK_ANTHROPIC_KEY` (warns on use)         |
-| `CMOBOX_BASE_URL` (legacy)      | no       | Alias for `KERFBOX_BASE_URL`                                  |
+| Variable                       | Required | Description                                                              |
+| ------------------------------ | -------- | ------------------------------------------------------------------------ |
+| `KERFBOX_BYOK_ANTHROPIC_KEY`   | no\*     | Your Anthropic key (BYOK). Required for live inference; omit for demo.   |
+| `KERFBOX_BASE_URL`             | no       | Override the API base (default: https://kerfbox.vercel.app).             |
+| `ANTHROPIC_API_KEY` (legacy)   | no       | Alias for `KERFBOX_BYOK_ANTHROPIC_KEY` (warns on use).                   |
+| `CMOBOX_BASE_URL` (legacy)     | no       | Alias for `KERFBOX_BASE_URL`.                                            |
+
+\* Required only for live (non-demo) inference. With no key set, tools
+return `401` unless called with `demo: true`.
 
 ---
 
@@ -140,6 +141,8 @@ kerf.box is the central hub for marketing strategy that an agent can
 plug into. We're not the agent — we're the slot the agent slides into
 when it needs to think about marketing.
 
+- **Account-free:** no login, no API key, no server-side state. Bring
+  your own Anthropic key or run in demo mode.
 - **Schema-validated output:** Zod-enforced `KerfSchema` and `CopySchema`.
   Your agent gets parsed JSON, not a string it has to coerce.
 - **Forced-citation research:** every signal ships with `web_search`
@@ -147,8 +150,6 @@ when it needs to think about marketing.
 - **Refusal-as-feature:** the route rejects any Kerf whose moat doesn't
   name a specific competitor with a structural reason. The brand POV is
   enforced in code, not in marketing copy.
-- **Persistent archive:** Kerfs are saved to your account and queryable
-  across sessions.
 - **Opinionated workflow:** cluster map → kerf → wedge (claim+proof+moat)
   → concepts → calendar → copy. The order is enforced.
 

@@ -52,27 +52,26 @@ export default function PrivacyPage() {
             <h2 className="serif text-xl mb-3" style={{ fontWeight: 500, color: "#f5f1e8" }}>
               What we store
             </h2>
+            <p className="mb-3">
+              Almost nothing. {SITE_NAME} is <strong>account-free</strong> —
+              there is no login, no password, no user database, and no API key
+              to issue. We hold no record that you used the product.
+            </p>
             <ul className="space-y-2 list-disc pl-5">
               <li>
-                <strong>Account identity.</strong> Sign-in is handled by Clerk
-                using Google. We receive your Clerk user id and the email
-                associated with that sign-in. We do not store your Google
-                password — Clerk handles authentication.
+                <strong>Your kerfs stay in your browser.</strong> Strategy
+                artifacts you save go to your own browser&apos;s{" "}
+                <code className="mono">localStorage</code> — they never reach our
+                servers. They live on the device that created them; clearing your
+                browser storage removes them. To move a kerf elsewhere, export it
+                as JSON and import it on another device.
               </li>
               <li>
-                <strong>Your kerfs.</strong> Strategy artifacts you save are
-                stored in our database (Supabase) and scoped to your account.
-                Only you can read them through the API.
-              </li>
-              <li>
-                <strong>API keys.</strong> If you mint a key, we store a one-way
-                hash and a short non-secret prefix — never the full key. The
-                plaintext is shown once at creation and cannot be recovered.
-              </li>
-              <li>
-                <strong>Usage metadata.</strong> We log endpoint, status code,
-                and timing per request to operate rate limits and debug
-                failures. Secrets are scrubbed from logs before they are written.
+                <strong>Transient request metadata.</strong> To operate per-IP
+                rate limits and debug failures, we may briefly process the
+                endpoint, status code, timing, and a derived rate-limit key for
+                each request. Secrets are scrubbed from logs before anything is
+                written, and we do not build a profile of you across requests.
               </li>
             </ul>
           </section>
@@ -88,6 +87,11 @@ export default function PrivacyPage() {
                 for that single request and never persisted, logged, or proxied
                 anywhere we can read it. In the web app it lives only in your own
                 browser&apos;s storage; clearing the field removes it for good.
+              </li>
+              <li>
+                <strong>Accounts.</strong> There are none. We never ask you to
+                sign up, so there is no identity, email, or login record to hold
+                in the first place.
               </li>
               <li>
                 <strong>Payment details.</strong> {SITE_NAME} is free — there is
@@ -108,12 +112,12 @@ export default function PrivacyPage() {
               Third-party processors
             </h2>
             <p>
-              We rely on a small set of infrastructure providers to run the
-              service: <strong>Clerk</strong> (authentication),{" "}
-              <strong>Supabase</strong> (database), <strong>Vercel</strong>{" "}
-              (hosting), and <strong>Anthropic</strong> (model inference). Your
-              inputs are sent to Anthropic only to generate the response you
-              requested.
+              We rely on a deliberately small set of infrastructure providers:{" "}
+              <strong>Vercel</strong> (hosting) and <strong>Anthropic</strong>{" "}
+              (model inference). Your inputs are sent to Anthropic only to
+              generate the response you requested — billed to your own key when
+              you bring one. There is no authentication provider and no database,
+              because there are no accounts and we store nothing server-side.
             </p>
           </section>
 
@@ -122,9 +126,14 @@ export default function PrivacyPage() {
               Your choices
             </h2>
             <p>
-              You can delete saved kerfs from your archive and revoke any API key
-              at any time. To request deletion of your account and associated
-              data, open a request via{" "}
+              Your saved kerfs are yours to manage directly: delete any entry —
+              or clear the whole archive — from the{" "}
+              <Link href="/briefs" style={{ color: "#ff1744" }}>
+                archive
+              </Link>{" "}
+              page, or just clear your browser&apos;s site data. Because there is
+              no account and we hold nothing server-side, there is no profile to
+              request the deletion of. Questions go to{" "}
               <a
                 href={ISSUES_URL}
                 target="_blank"

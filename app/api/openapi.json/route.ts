@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { KNOWN_SCOPES, SCOPE_DESCRIPTIONS } from "@/lib/scopes";
 
 export const runtime = "nodejs";
 
@@ -10,8 +9,12 @@ export const runtime = "nodejs";
  * downstream consumers — Anthropic agents, MCP shims, Postman, etc. —
  * even when internal Zod schemas evolve.
  *
- * v0.2 introduces the Kerf shape; the v0.1 Brief shape is documented
- * alongside it as deprecated for the duration of the migration window.
+ * The API is account-free and open: there is no login, no minted API key,
+ * and no server-side persistence. Callers either bring their own Anthropic
+ * key per request (`X-Anthropic-Key`, BYOK) for live inference, or pass
+ * `demo: true` for canned content. Rate limiting is per-IP. Saving a Kerf
+ * happens client-side in the browser (localStorage) — there are no archive
+ * endpoints on the server.
  */
 export function GET(req: Request) {
   // Build the server URL from the incoming request so the spec is correct
@@ -27,17 +30,18 @@ export function GET(req: Request) {
         "Strategic-cut API. Map where a category clusters, find the narrow defensible " +
         "kerf between clusters, and ship a wedge with a structural moat — or surface " +
         "an in-stream `error` SSE event if the moat doesn't hold. Designed to be " +
-        "called by AI agents (via MCP or directly) as well as the kerf.box web app.",
+        "called by AI agents (via MCP or directly) as well as the kerf.box web app.\n\n" +
+        "**Account-free:** no login and no API key. Pass your own Anthropic key per " +
+        "request via the `X-Anthropic-Key` header (BYOK) for live inference, or set " +
+        "`demo: true` for canned content. Rate limiting is per-IP.",
       contact: { name: "kerf.box", url: "https://kerfbox.vercel.app" },
       // OpenAPI 3.1 prefers SPDX `identifier` over the older `name`-only form.
       license: { name: "MIT", identifier: "MIT" },
     },
     servers: [{ url: origin }],
-    security: [{ bearerAuth: [] }],
     tags: [
       { name: "strategy", description: "Cut Kerfs (SSE stream)" },
       { name: "copy", description: "Generate platform copy from a Kerf" },
-      { name: "kerfs", description: "Persistent archive of saved Kerfs" },
     ],
     paths: {
       "/api/strategy": {
@@ -48,12 +52,13 @@ export function GET(req: Request) {
           description:
             "Streams Server-Sent Events. Events: `step` (research progress), `kerf` (final " +
             "payload), `error`. On success the final `kerf` event contains a `Kerf` object. " +
-            "Pass `X-Anthropic-Key` to bring your own Anthropic key (BYOK).\n\n" +
+            "Pass `X-Anthropic-Key` to bring your own Anthropic key (BYOK), or set " +
+            "`demo: true` for a canned Kerf.\n\n" +
             "**Error semantics:** The route opens the SSE stream on the first byte, so the " +
             "HTTP status is 200 for both success and refusal. Clients MUST branch on the " +
             "SSE event `type`, not the HTTP status, to detect failure. The only non-200 " +
-            "responses are pre-stream errors: 400 (malformed request), 401 (auth), 403 " +
-            "(scope), 429 (rate limit), 503 (no inference key available).\n\n" +
+            "responses are pre-stream errors: 400 (malformed request), 401 (no Anthropic " +
+            "key and `demo` not set), 429 (rate limit).\n\n" +
             "**Refusal rule:** if `wedge.moat` does not name a competitor from " +
             "`cluster_map` and give a structural reason, the route emits an `error` event " +
             "with a 'Kerf rejected' message. Re-run with sharper inputs.",
@@ -77,11 +82,8 @@ export function GET(req: Request) {
             },
             "400": { $ref: "#/components/responses/BadRequest" },
             "401": { $ref: "#/components/responses/Unauthorized" },
-            "403": { $ref: "#/components/responses/Forbidden" },
             "429": { $ref: "#/components/responses/RateLimited" },
-            "503": { $ref: "#/components/responses/Unavailable" },
           },
-          "x-required-scope": "strategy:write",
         },
       },
       "/api/copy": {
@@ -113,7 +115,6 @@ export function GET(req: Request) {
             },
             "400": { $ref: "#/components/responses/BadRequest" },
             "401": { $ref: "#/components/responses/Unauthorized" },
-            "403": { $ref: "#/components/responses/Forbidden" },
             "429": { $ref: "#/components/responses/RateLimited" },
             "502": {
               description: "Upstream model returned malformed output.",
@@ -123,157 +124,11 @@ export function GET(req: Request) {
                 },
               },
             },
-            "503": { $ref: "#/components/responses/Unavailable" },
           },
-          "x-required-scope": "copy:write",
-        },
-      },
-      "/api/briefs": {
-        get: {
-          tags: ["kerfs"],
-          operationId: "listKerfs",
-          summary: "List saved Kerfs (newest first, max 50)",
-          description:
-            "Returns both `kerfs` (v0.2 field) and `briefs` (deprecated v0.1 alias) — " +
-            "they reference the same array. Prefer `kerfs` in new clients.",
-          responses: {
-            "200": {
-              description: "Saved Kerfs for the authenticated caller.",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    required: ["kerfs"],
-                    properties: {
-                      kerfs: {
-                        type: "array",
-                        items: { $ref: "#/components/schemas/SavedKerf" },
-                      },
-                      briefs: {
-                        type: "array",
-                        deprecated: true,
-                        items: { $ref: "#/components/schemas/SavedKerf" },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-            "401": { $ref: "#/components/responses/Unauthorized" },
-            "403": { $ref: "#/components/responses/Forbidden" },
-            "503": { $ref: "#/components/responses/Unavailable" },
-          },
-          "x-required-scope": "briefs:read",
-        },
-        post: {
-          tags: ["kerfs"],
-          operationId: "saveKerf",
-          summary: "Save a Kerf to the caller's archive",
-          description:
-            "Provide exactly one of `kerf` (v0.2, preferred) or `brief` (v0.1 legacy alias).",
-          requestBody: {
-            required: true,
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  required: ["url", "audience"],
-                  properties: {
-                    url: { type: "string" },
-                    audience: { type: "string" },
-                    kerf: { $ref: "#/components/schemas/Kerf" },
-                    brief: {
-                      $ref: "#/components/schemas/Brief",
-                      deprecated: true,
-                    },
-                  },
-                },
-              },
-            },
-          },
-          responses: {
-            "200": {
-              description: "Saved.",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    required: ["id"],
-                    properties: { id: { type: "string", format: "uuid" } },
-                  },
-                },
-              },
-            },
-            "400": { $ref: "#/components/responses/BadRequest" },
-            "401": { $ref: "#/components/responses/Unauthorized" },
-            "403": { $ref: "#/components/responses/Forbidden" },
-            "503": { $ref: "#/components/responses/Unavailable" },
-          },
-          "x-required-scope": "briefs:write",
-        },
-      },
-      "/api/briefs/{id}": {
-        get: {
-          tags: ["kerfs"],
-          operationId: "getKerf",
-          summary: "Fetch one saved Kerf by id",
-          description:
-            "Response includes both `kerf` (v0.2 field) and `brief` (v0.1 alias).",
-          parameters: [
-            {
-              in: "path",
-              name: "id",
-              required: true,
-              schema: { type: "string", format: "uuid" },
-            },
-          ],
-          responses: {
-            "200": {
-              description: "Saved Kerf.",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    required: ["kerf"],
-                    properties: {
-                      kerf: { $ref: "#/components/schemas/SavedKerf" },
-                      brief: {
-                        $ref: "#/components/schemas/SavedKerf",
-                        deprecated: true,
-                      },
-                    },
-                  },
-                },
-              },
-            },
-            "401": { $ref: "#/components/responses/Unauthorized" },
-            "403": { $ref: "#/components/responses/Forbidden" },
-            "404": {
-              description: "Not found (or not owned by caller).",
-              content: {
-                "application/json": {
-                  schema: { $ref: "#/components/schemas/Error" },
-                },
-              },
-            },
-            "503": { $ref: "#/components/responses/Unavailable" },
-          },
-          "x-required-scope": "briefs:read",
         },
       },
     },
     components: {
-      securitySchemes: {
-        bearerAuth: {
-          type: "http",
-          scheme: "bearer",
-          bearerFormat: "cmo_live_*",
-          description:
-            "API key with format `cmo_live_<32 base62 chars>`. Mint at /app/keys. " +
-            "Web app callers may use a Clerk session cookie instead, but agent/MCP " +
-            "callers should always use a Bearer token.",
-        },
-      },
       parameters: {
         AnthropicKeyHeader: {
           in: "header",
@@ -281,10 +136,10 @@ export function GET(req: Request) {
           required: false,
           schema: { type: "string" },
           description:
-            "Optional: bring your own Anthropic key. When present, inference uses " +
-            "this key instead of the kerf.box server key. Recommended for high-volume " +
-            "agent traffic and required when calling from API keys against an " +
-            "instance that has no server-side Anthropic key configured.",
+            "Bring your own Anthropic key (BYOK). When present, inference runs on this " +
+            "key and it is never stored, logged, or proxied. Required for live inference " +
+            "unless the instance is self-hosted with a server-side Anthropic key, or you " +
+            "pass `demo: true`.",
         },
       },
       responses: {
@@ -295,30 +150,18 @@ export function GET(req: Request) {
           },
         },
         Unauthorized: {
-          description: "Missing or invalid credentials.",
-          content: {
-            "application/json": { schema: { $ref: "#/components/schemas/Error" } },
-          },
-        },
-        Forbidden: {
-          description: "API key is missing the required scope.",
-          content: {
-            "application/json": { schema: { $ref: "#/components/schemas/Error" } },
-          },
-        },
-        Unavailable: {
           description:
-            "Inference unavailable (no Anthropic key on server, no BYOK provided) " +
-            "or backing service not configured.",
+            "Live inference was requested but no Anthropic key was provided (no " +
+            "`X-Anthropic-Key` header, and no server key on this instance) and `demo` " +
+            "was not set. Pass a BYOK key or set `demo: true`.",
           content: {
             "application/json": { schema: { $ref: "#/components/schemas/Error" } },
           },
         },
         RateLimited: {
           description:
-            "Per-caller rate limit exceeded. The response includes a `Retry-After` " +
-            "header (seconds). Strategy = 10/hour, copy = 60/hour, keyed by user/api-key " +
-            "or IP for anonymous BYOK callers.",
+            "Per-IP rate limit exceeded. The response includes a `Retry-After` " +
+            "header (seconds). Strategy = 10/hour, copy = 60/hour, keyed by client IP.",
           headers: {
             "Retry-After": {
               schema: { type: "integer" },
@@ -336,13 +179,6 @@ export function GET(req: Request) {
           required: ["error"],
           properties: { error: { type: "string" } },
         },
-        Scope: {
-          type: "string",
-          enum: KNOWN_SCOPES,
-          description:
-            "API-key scope. Descriptions:\n" +
-            KNOWN_SCOPES.map((s) => `- \`${s}\` — ${SCOPE_DESCRIPTIONS[s]}`).join("\n"),
-        },
         StrategyRequest: {
           type: "object",
           required: ["url", "audience"],
@@ -359,7 +195,7 @@ export function GET(req: Request) {
             },
             demo: {
               type: "boolean",
-              description: "If true, returns a canned demo Kerf (no inference).",
+              description: "If true, returns a canned demo Kerf (no inference, no key needed).",
               default: false,
             },
           },
@@ -369,8 +205,7 @@ export function GET(req: Request) {
           required: ["kerf", "entry"],
           description:
             "Generate copy for one calendar entry. `entry.concept_id` must reference " +
-            "a concept inside the provided `kerf`. The v0.1 `brief` field is no " +
-            "longer accepted — upgrade legacy callers to pass `kerf`.",
+            "a concept inside the provided `kerf`.",
           properties: {
             kerf: { $ref: "#/components/schemas/Kerf" },
             entry: { $ref: "#/components/schemas/CalendarEntry" },
@@ -501,75 +336,6 @@ export function GET(req: Request) {
               type: "array",
               items: { $ref: "#/components/schemas/CalendarEntry" },
             },
-          },
-        },
-        // Legacy v0.1 shapes — kept so old saved rows still validate.
-        Positioning: {
-          type: "object",
-          deprecated: true,
-          required: ["angle", "rationale"],
-          properties: {
-            angle: { type: "string" },
-            rationale: { type: "string" },
-          },
-        },
-        LegacyConcept: {
-          type: "object",
-          deprecated: true,
-          required: ["id", "name", "why_now", "hook"],
-          properties: {
-            id: { type: "string" },
-            name: { type: "string" },
-            why_now: { type: "string" },
-            hook: { type: "string" },
-          },
-        },
-        Brief: {
-          type: "object",
-          deprecated: true,
-          description: "Legacy v0.1 strategy artifact. Use `Kerf` for new work.",
-          required: [
-            "company_summary",
-            "research_findings",
-            "market_gap",
-            "positioning",
-            "concepts",
-            "calendar",
-          ],
-          properties: {
-            company_summary: { type: "string" },
-            research_findings: {
-              type: "array",
-              items: { $ref: "#/components/schemas/Signal" },
-            },
-            market_gap: { type: "string" },
-            positioning: { $ref: "#/components/schemas/Positioning" },
-            concepts: {
-              type: "array",
-              items: { $ref: "#/components/schemas/LegacyConcept" },
-            },
-            calendar: {
-              type: "array",
-              items: { $ref: "#/components/schemas/CalendarEntry" },
-            },
-          },
-        },
-        SavedKerf: {
-          type: "object",
-          required: ["id", "url", "audience", "brief_json", "created_at"],
-          description:
-            "DB row. The `brief_json` column holds either a Kerf (v0.2) or a Brief (v0.1).",
-          properties: {
-            id: { type: "string", format: "uuid" },
-            url: { type: "string" },
-            audience: { type: "string" },
-            brief_json: {
-              oneOf: [
-                { $ref: "#/components/schemas/Kerf" },
-                { $ref: "#/components/schemas/Brief" },
-              ],
-            },
-            created_at: { type: "string", format: "date-time" },
           },
         },
         Copy: {

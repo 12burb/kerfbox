@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import AuthButtons from "@/components/cmo/AuthButtons";
 import InputStage from "@/components/cmo/InputStage";
 import WorkingStage from "@/components/cmo/WorkingStage";
 import KerfStage from "@/components/cmo/BriefStage";
@@ -16,6 +15,7 @@ import {
 } from "@/components/cmo/shared";
 import { KerfSchema, CopySchema, type Kerf, type CalendarEntry, type Copy } from "@/lib/schema";
 import { readSSE } from "@/lib/sse";
+import { saveToArchive } from "@/lib/archive";
 
 type Stage = "input" | "working" | "kerf";
 
@@ -247,31 +247,16 @@ export default function AppPage() {
   };
 
   /**
-   * Explicit save action. The route is `Authorization: Bearer` OR Clerk
-   * session. If neither is present, /api/briefs returns 401 — we surface
-   * that as `needs-auth` and prompt the user to sign in.
+   * Save the current Kerf to the browser-local archive (localStorage).
+   * Account-free: there is no server to POST to — the kerf lives only in
+   * this browser. Clearing site data wipes it, so the SaveBar also offers
+   * JSON export as the durable, portable copy.
    */
-  const saveKerf = async () => {
+  const saveKerf = () => {
     if (!kerf) return;
     setSaveState("saving");
-    try {
-      const res = await fetch("/api/briefs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, audience, kerf }),
-      });
-      if (res.status === 401) {
-        setSaveState("needs-auth");
-        return;
-      }
-      if (!res.ok) {
-        setSaveState("error");
-        return;
-      }
-      setSaveState("saved");
-    } catch {
-      setSaveState("error");
-    }
+    const entry = saveToArchive({ url, audience, kerf });
+    setSaveState(entry ? "saved" : "error");
   };
 
   const generateCopy = async (entry: CalendarEntry) => {
@@ -339,22 +324,13 @@ export default function AppPage() {
           </Link>
           <div className="flex items-center gap-2">
             {stage === "input" && (
-              <>
-                <Link
-                  href="/briefs"
-                  className="mono text-[11px] uppercase tracking-widest px-3 py-2 border"
-                  style={{ borderColor: ACCENT_DIM, color: MUTED }}
-                >
-                  archive →
-                </Link>
-                <Link
-                  href="/app/keys"
-                  className="mono text-[11px] uppercase tracking-widest px-3 py-2 border"
-                  style={{ borderColor: ACCENT_DIM, color: MUTED }}
-                >
-                  keys →
-                </Link>
-              </>
+              <Link
+                href="/briefs"
+                className="mono text-[11px] uppercase tracking-widest px-3 py-2 border"
+                style={{ borderColor: ACCENT_DIM, color: MUTED }}
+              >
+                archive →
+              </Link>
             )}
             {stage !== "input" && (
               <button
@@ -365,7 +341,6 @@ export default function AppPage() {
                 ← new kerf
               </button>
             )}
-            <AuthButtons />
           </div>
         </header>
 
@@ -394,7 +369,12 @@ export default function AppPage() {
         {stage === "kerf" && kerf && (
           <>
             <KerfStage kerf={kerf} onEntryClick={generateCopy} />
-            <SaveBar state={saveState} onSave={saveKerf} />
+            <SaveBar
+              state={saveState}
+              onSave={saveKerf}
+              kerf={kerf}
+              meta={{ url, audience }}
+            />
           </>
         )}
 

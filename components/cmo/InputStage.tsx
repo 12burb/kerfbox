@@ -9,9 +9,6 @@ type Props = {
   audience: string;
   byokKey: string;
   error: string | null;
-  /** True when the signed-in user can run on the in-house agent (Pro, or a
-   *  self-host with a server key). Makes BYOK optional. */
-  canUseInHouse?: boolean;
   onUrlChange: (v: string) => void;
   onAudienceChange: (v: string) => void;
   onByokKeyChange: (v: string) => void;
@@ -21,30 +18,31 @@ type Props = {
 /**
  * The /app entry form. Three fields: URL, audience, Anthropic key (BYOK).
  *
- * BYOK is required for live runs because we deliberately do not ship a
- * server fallback Anthropic key on this surface — strategy that an
- * unauthenticated visitor pays for is worse than honest demo content.
- * If the key field is empty, the demo button is the only path forward.
+ * kerf.box is free: there is no server-paid generation on the hosted app.
+ * Every live run uses the visitor's OWN Anthropic key (pasted here) or a
+ * Claude MCP connection. We deliberately do not ship a server fallback key
+ * on this surface, so if the key field is empty the demo button is the only
+ * path forward.
  *
- * The key never leaves the request boundary: it goes straight into the
- * `X-Anthropic-Key` header on /api/strategy and is dropped from React
- * state on reset. We don't persist it anywhere.
+ * The key goes straight into the `X-Anthropic-Key` header on /api/strategy
+ * and is never stored, logged, or proxied server-side. The parent (/app)
+ * may keep it in the browser's localStorage so it survives a reload;
+ * clearing the field wipes it from the browser for good.
  */
 export default function InputStage({
   url,
   audience,
   byokKey,
   error,
-  canUseInHouse = false,
   onUrlChange,
   onAudienceChange,
   onByokKeyChange,
   onRun,
 }: Props) {
   const [keyVisible, setKeyVisible] = useState(false);
+  // Live runs require the visitor's own Anthropic key (BYOK) or a Claude
+  // MCP connection. No key → demo is the only path.
   const hasKey = byokKey.trim().length > 0;
-  // Live runs need EITHER a pasted key OR Pro/in-house entitlement.
-  const canRunLive = hasKey || canUseInHouse;
 
   return (
     <div className="relative">
@@ -111,11 +109,7 @@ export default function InputStage({
           >
             <KeyRound size={12} />
             03 · Anthropic key (BYOK) ·{" "}
-            {canUseInHouse ? (
-              <span style={{ color: MUTED }}>optional — you&rsquo;re on the in-house agent</span>
-            ) : (
-              <span style={{ color: ACCENT }}>required for live runs</span>
-            )}
+            <span style={{ color: ACCENT }}>required for live runs (or connect via Claude MCP)</span>
           </label>
           <div className="flex items-stretch gap-2">
             <input
@@ -168,9 +162,9 @@ export default function InputStage({
         >
           <button
             onClick={() => onRun(false)}
-            disabled={!canRunLive}
+            disabled={!hasKey}
             className="btn-red px-8 py-4 mono text-sm uppercase tracking-widest font-bold inline-flex items-center gap-3 disabled:opacity-40 disabled:cursor-not-allowed"
-            title={canRunLive ? "" : "Paste an Anthropic key, or upgrade to Pro to run on our agent."}
+            title={hasKey ? "" : "Paste your Anthropic key (or connect via Claude MCP) to run live."}
           >
             <Play size={14} fill="currentColor" /> Cut a kerf
           </button>

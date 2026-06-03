@@ -10,8 +10,7 @@
 --   briefs       — saved Kerfs (and legacy v0.1 Briefs) per user
 --   copy_outputs — generated platform copy, child of a brief row
 --   api_keys     — sha256-hashed API keys with scopes for agent/MCP callers
---   api_calls    — usage log for billing + abuse detection (1 row / request)
---   subscriptions— one row per paying user; mirror of Stripe subscription state
+--   api_calls    — usage log for rate limiting + abuse detection (1 row / request)
 
 create extension if not exists pgcrypto;
 
@@ -101,41 +100,6 @@ create index if not exists api_calls_key_created_idx
   on api_calls (api_key_id, created_at desc);
 
 ------------------------------------------------------------------------
--- subscriptions — mirror of Stripe subscription state, keyed by Clerk user
-------------------------------------------------------------------------
--- Source of truth is Stripe; this table is a cache the app reads on the
--- hot path (every server-key inference call asks "is this user Pro?").
--- Written ONLY by the Stripe webhook (app/api/stripe/webhook), which
--- verifies the event signature before upserting. One row per user.
---
---   user_id        = Clerk user id (PK) — set via checkout client_reference_id
---                    and subscription metadata so every event maps home.
---   stripe_customer_id     = cus_… (for the billing portal + event fallback)
---   stripe_subscription_id = sub_…
---   status         = Stripe subscription status: active | trialing |
---                    past_due | canceled | incomplete | … . Entitlement =
---                    status in ('active','trialing').
---   current_period_end = when the paid window ends (extra safety on top of
---                    status; a cancel-at-period-end stays 'active' until then)
---   price_id       = the Stripe price the user is on (future multi-tier)
-
-create table if not exists subscriptions (
-  user_id                 text primary key,            -- Clerk user id
-  stripe_customer_id      text unique,
-  stripe_subscription_id  text unique,
-  status                  text not null default 'incomplete',
-  price_id                text,
-  current_period_end      timestamptz,
-  created_at              timestamptz not null default now(),
-  updated_at              timestamptz not null default now()
-);
-
--- Webhook fallback path: when a subscription.updated/deleted event lacks
--- our metadata, we resolve the user by customer id.
-create index if not exists subscriptions_customer_idx
-  on subscriptions (stripe_customer_id);
-
-------------------------------------------------------------------------
 -- Row-Level Security (defense in depth)
 ------------------------------------------------------------------------
 -- All app traffic goes through the Supabase service-role key from our
@@ -161,7 +125,6 @@ alter table briefs        enable row level security;
 alter table copy_outputs  enable row level security;
 alter table api_keys      enable row level security;
 alter table api_calls     enable row level security;
-alter table subscriptions enable row level security;
 
 -- Idempotent policy creation: drop-then-create so re-running this file
 -- after a policy tweak doesn't error on "policy already exists."
@@ -173,8 +136,6 @@ drop policy if exists deny_all_anon          on api_keys;
 drop policy if exists deny_all_authenticated on api_keys;
 drop policy if exists deny_all_anon          on api_calls;
 drop policy if exists deny_all_authenticated on api_calls;
-drop policy if exists deny_all_anon          on subscriptions;
-drop policy if exists deny_all_authenticated on subscriptions;
 
 -- `using (false) with check (false)` on a role means: no row visible, no
 -- write allowed, ever. The service role used by getSupabaseServer()
@@ -187,5 +148,3 @@ create policy deny_all_anon          on api_keys     for all to anon          us
 create policy deny_all_authenticated on api_keys     for all to authenticated using (false) with check (false);
 create policy deny_all_anon          on api_calls    for all to anon          using (false) with check (false);
 create policy deny_all_authenticated on api_calls    for all to authenticated using (false) with check (false);
-create policy deny_all_anon          on subscriptions for all to anon          using (false) with check (false);
-create policy deny_all_authenticated on subscriptions for all to authenticated using (false) with check (false);

@@ -38,7 +38,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "What does it cost?",
-    a: "Free with your own Anthropic key (BYOK) or over MCP — forever, because you pay Anthropic directly. The only paid tier is Pro at a flat $15/mo: we run every request on our in-house agent so you never manage a key. No metering, no per-seat, cancel anytime.",
+    a: "Nothing. kerf.box is free — forever. You bring your own Anthropic key (BYOK) or connect it to Claude over MCP, and you pay Anthropic directly for the tokens you use. There's no subscription, no metering, no per-seat fee, and we never run generation on our own key.",
   },
   {
     q: "Where does the research come from?",
@@ -430,30 +430,32 @@ export default function LandingPage() {
             ⎯ pricing
           </div>
           <h2 className="serif text-3xl md:text-4xl mb-3" style={{ fontWeight: 500 }}>
-            Free to use. Pay only to skip the key.
+            It&rsquo;s free. You bring the key.
           </h2>
           <p className="text-sm mb-12 max-w-2xl" style={{ color: MUTED }}>
-            Bring your own Anthropic key — or connect kerf.box to your agent over MCP —
-            and it&rsquo;s free, forever. Pro runs every request on our in-house agent
-            for one flat fee, so you never manage a key.
+            Bring your own Anthropic key — or connect kerf.box to Claude over MCP —
+            and it&rsquo;s free, forever. You pay Anthropic directly for the tokens you
+            use. No subscription, no metering, no per-seat fee. We never run generation
+            on our own key.
           </p>
-          <div className="grid md:grid-cols-2 gap-6 max-w-3xl">
+          <div className="max-w-md">
             {/* FREE */}
             <div
               className="border p-6 md:p-8 flex flex-col"
-              style={{ borderColor: ACCENT_DIM, background: BG_2 }}
+              style={{ borderColor: ACCENT, background: BG_2 }}
             >
-              <div className="mono text-[10px] uppercase tracking-widest mb-4" style={{ color: MUTED }}>
+              <div className="mono text-[10px] uppercase tracking-widest mb-4" style={{ color: ACCENT }}>
                 free · BYOK or MCP
               </div>
               <div className="serif text-4xl mb-2" style={{ fontWeight: 500 }}>
-                $0
+                $0<span className="text-base" style={{ color: MUTED }}> / forever</span>
               </div>
               <div className="text-sm mb-6" style={{ color: MUTED }}>
                 Pay Anthropic at cost. We charge nothing.
               </div>
               <ul className="space-y-2 text-sm mb-8 flex-1" style={{ color: MUTED }}>
                 <li>· Unlimited kerfs with your own key</li>
+                <li>· Or connect to Claude over MCP — no key to paste</li>
                 <li>· Full REST API + MCP server for agents</li>
                 <li>· Save to archive · mint scoped API keys</li>
                 <li>· The refusal engine · demo mode</li>
@@ -465,41 +467,6 @@ export default function LandingPage() {
                 style={{ background: ACCENT, color: "#000", fontWeight: 600 }}
               >
                 start free →
-              </Link>
-            </div>
-
-            {/* PRO */}
-            <div
-              className="border p-6 md:p-8 flex flex-col relative"
-              style={{ borderColor: ACCENT, background: "rgba(255,23,68,0.04)" }}
-            >
-              <div
-                className="absolute -top-3 left-6 mono text-[10px] uppercase tracking-widest px-2 py-1"
-                style={{ background: ACCENT, color: "#000", fontWeight: 600 }}
-              >
-                the luxury
-              </div>
-              <div className="mono text-[10px] uppercase tracking-widest mb-4" style={{ color: ACCENT }}>
-                pro · in-house agent
-              </div>
-              <div className="serif text-4xl mb-2" style={{ fontWeight: 500 }}>
-                $15<span className="text-base" style={{ color: MUTED }}>/mo</span>
-              </div>
-              <div className="text-sm mb-6" style={{ color: MUTED }}>
-                We run the agent. You never touch a key.
-              </div>
-              <ul className="space-y-2 text-sm mb-8 flex-1" style={{ color: MUTED }}>
-                <li>· Everything in Free</li>
-                <li>· Run with no key — inference on us</li>
-                <li>· Flat fee · no metering, no per-seat</li>
-                <li>· Works from the web app, API, or MCP</li>
-              </ul>
-              <Link
-                href="/pricing"
-                className="mono text-[11px] uppercase tracking-widest px-3 py-2 text-center"
-                style={{ background: ACCENT, color: "#000", fontWeight: 600 }}
-              >
-                go pro · $15/mo →
               </Link>
             </div>
           </div>

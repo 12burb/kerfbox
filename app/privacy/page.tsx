@@ -86,13 +86,14 @@ export default function PrivacyPage() {
                 <strong>Your Anthropic key (BYOK).</strong> When you pass an
                 <code className="mono"> X-Anthropic-Key </code> header, it is used
                 for that single request and never persisted, logged, or proxied
-                anywhere we can read it.
+                anywhere we can read it. In the web app it lives only in your own
+                browser&apos;s storage; clearing the field removes it for good.
               </li>
               <li>
-                <strong>Card numbers.</strong> Payments for Pro are handled
-                entirely by <strong>Stripe</strong>. Your card details go to
-                Stripe, never to us — we only store a Stripe customer/subscription
-                id and your plan status so we know whether your account is active.
+                <strong>Payment details.</strong> {SITE_NAME} is free — there is
+                no subscription and we do not process payments, so we never see or
+                store a card number. You pay Anthropic directly for the inference
+                you run with your own key.
               </li>
               <li>
                 <strong>Your data, for sale.</strong> We do not sell or rent
@@ -110,10 +111,9 @@ export default function PrivacyPage() {
               We rely on a small set of infrastructure providers to run the
               service: <strong>Clerk</strong> (authentication),{" "}
               <strong>Supabase</strong> (database), <strong>Vercel</strong>{" "}
-              (hosting), <strong>Stripe</strong> (payments for Pro), and{" "}
-              <strong>Anthropic</strong> (model inference, when you are not using
-              BYOK). Your inputs are sent to Anthropic only to generate the
-              response you requested.
+              (hosting), and <strong>Anthropic</strong> (model inference). Your
+              inputs are sent to Anthropic only to generate the response you
+              requested.
             </p>
           </section>
 

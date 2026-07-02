@@ -71,7 +71,8 @@ production these live in Vercel project settings, stored as Sensitive. See
 
 | Variable | Purpose |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | Optional server-side Anthropic key for self-hosting. Without it, the hosted model is BYOK-only: live calls must carry the caller's own key, and demo content is served otherwise. |
+| `KERFBOX_ANTHROPIC_KEY` | Optional server-side Anthropic key for self-hosting. Without it, the hosted model is BYOK-only: live calls must carry the caller's own key, and demo content is served otherwise. Preferred over the bare name so it can't collide with other tools that auto-read `ANTHROPIC_API_KEY`. |
+| `ANTHROPIC_API_KEY` | Legacy fallback for `KERFBOX_ANTHROPIC_KEY`. |
 | `KERFBOX_STRATEGY_MODEL` | Optional. Override the strategy/research model. |
 | `KERFBOX_COPY_MODEL` | Optional. Override the copy model. |
 

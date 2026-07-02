@@ -10,9 +10,10 @@ import Anthropic from "@anthropic-ai/sdk";
  *      because many tools auto-detect it; we don't want to spam Vercel
  *      logs on every cold start.
  *
- * Returns null when neither is set (callers must surface this as a 503
- * rather than silently falling through to demo content for API-key
- * traffic — see route handlers).
+ * Returns null when neither is set. Account-free: with no server key, a
+ * live request that carries no BYOK header and did not ask for demo is
+ * surfaced as a 401 by the route handlers (not a silent fall-through to
+ * demo content) — see app/api/strategy and app/api/copy.
  */
 function serverAnthropicKey(): string | null {
   return process.env.KERFBOX_ANTHROPIC_KEY ?? process.env.ANTHROPIC_API_KEY ?? null;

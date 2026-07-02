@@ -29,7 +29,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "What is the refusal rule?",
-    a: "After generation, the wedge.moat field is checked. If it doesn't reference at least one competitor from the cluster map, or reduces to 'we'll execute better,' the route returns 422 with a reason. The brand POV — that undefendable strategy is worse than no strategy — is enforced in code.",
+    a: "After generation, the wedge.moat field is checked. If it doesn't reference at least one competitor from the cluster map, or reduces to 'we'll execute better,' the run is refused — the stream emits an error with the reason instead of shipping. The brand POV — that undefendable strategy is worse than no strategy — is enforced in code.",
   },
   {
     q: "What's BYOK?",
@@ -240,7 +240,7 @@ export default function LandingPage() {
               {
                 n: "04",
                 t: "Refuse if undefendable",
-                b: "If the moat reduces to 'we'll execute better,' the route returns 422. The refusal is the brand POV.",
+                b: "If the moat reduces to 'we'll execute better,' the run is refused with a reason. The refusal is the brand POV.",
               },
             ].map((s) => (
               <div key={s.n} className="border-t pt-6" style={{ borderColor: ACCENT_DIM }}>
@@ -288,7 +288,7 @@ export default function LandingPage() {
             <p className="text-base mt-6" style={{ color: MUTED }}>
               Generic AI marketing tools optimize for fluency. kerf.box optimizes for
               defensibility. The wedge has to name a competitor and explain why they
-              can&rsquo;t follow — or the route returns 422 and tells you why. The refusal
+              can&rsquo;t follow — or the run is refused and tells you why. The refusal
               is the brand POV expressed in code.
             </p>
           </div>
@@ -320,8 +320,8 @@ export default function LandingPage() {
                 No account, no API key — the API is open. You bring your own
                 Anthropic key per call (passed through, never stored), or
                 connect over MCP. The refusal rule applies to agents too: an
-                undefendable Kerf is a 422, not a hallucination dressed in a
-                deck.
+                undefendable Kerf is refused with a reason, not a hallucination
+                dressed in a deck.
               </p>
               <div className="flex flex-wrap gap-3">
                 <Link

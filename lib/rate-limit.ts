@@ -238,21 +238,11 @@ export async function checkRateLimit(
 }
 
 /**
- * Build a stable rate-limit key for a request. Order of preference:
- *   1. Authenticated user id (so signed-in users share a budget across
- *      devices/sessions, and an attacker can't bypass by rotating cookies)
- *   2. API key id (per-credential budget)
- *   3. Forwarded client IP from the standard Vercel headers
- *   4. Fallback marker — coarse but never empty
+ * Build a stable rate-limit key for a request. kerf.box is account-free —
+ * there is no user id or minted API key to bucket on — so the key is the
+ * forwarded client IP, with a coarse fallback marker so it's never empty.
  */
-export function rateLimitKey(args: {
-  prefix: string;
-  userId?: string | null;
-  apiKeyId?: string | null;
-  req: Request;
-}): string {
-  if (args.userId) return `${args.prefix}:user:${args.userId}`;
-  if (args.apiKeyId) return `${args.prefix}:key:${args.apiKeyId}`;
+export function rateLimitKey(args: { prefix: string; req: Request }): string {
   // Prefer `x-real-ip`: on Vercel it's a single, proxy-set value for the
   // true client IP. `x-forwarded-for` is a client-appendable chain — Vercel
   // prepends the real IP, but parsing "first entry" is more fragile and

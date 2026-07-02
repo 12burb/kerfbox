@@ -32,7 +32,7 @@ export async function POST(req: Request) {
   // calendar entry). Budget: 60 / hour — covers 8 full calendars with
   // headroom for retries.
   const rl = await checkRateLimit(
-    rateLimitKey({ prefix: "copy", userId: null, apiKeyId: null, req }),
+    rateLimitKey({ prefix: "copy", req }),
     60,
     60 * 60 * 1000
   );

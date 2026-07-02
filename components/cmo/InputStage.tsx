@@ -182,7 +182,7 @@ export default function InputStage({
         {[
           { tag: "Cluster map", text: "Browses the web. Maps where the category clusters today, by named competitor." },
           { tag: "The kerf", text: "Names the narrow defensible cut between the clusters. With proof and a structural moat." },
-          { tag: "Refusal rule", text: "If the moat doesn't reference a competitor and a structural reason, the route returns 422." },
+          { tag: "Refusal rule", text: "If the moat doesn't reference a competitor and a structural reason, the run is refused with a reason." },
         ].map((x, i) => (
           <div key={i} className="p-5 border dash-border" style={{ borderColor: ACCENT_DIM, borderBottom: 0 }}>
             <div className="mono text-[10px] uppercase tracking-widest mb-2" style={{ color: ACCENT }}>

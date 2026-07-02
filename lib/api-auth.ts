@@ -76,5 +76,11 @@ export function sanitizeForLog(value: unknown): unknown {
   return str
     .replace(/sk-ant-[A-Za-z0-9_-]+/g, "sk-ant-[REDACTED]")
     .replace(/cmo_(live|test)_[A-Za-z0-9]+/g, "cmo_$1_[REDACTED]")
-    .replace(/(x-anthropic-key|x-api-key|authorization)["'\s:=]+[^"'\s,}]+/gi, "$1=[REDACTED]");
+    // Optionally swallow a `Bearer`/`Basic` scheme word so the token after
+    // it is redacted too — without this, "Authorization: Bearer abc" would
+    // redact only the word "Bearer" and leave the token in the log.
+    .replace(
+      /(x-anthropic-key|x-api-key|authorization)["'\s:=]+(?:(?:bearer|basic)\s+)?[^"'\s,}]+/gi,
+      "$1=[REDACTED]"
+    );
 }

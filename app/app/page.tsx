@@ -146,8 +146,8 @@ export default function AppPage() {
       });
       if (!res.ok) {
         // Branch error messages by status: a 401 from a missing/expired
-        // BYOK is a different user action (paste a fresh key) than a 503
-        // (no inference available, try demo) or a 5xx (transient — retry).
+        // BYOK is a different user action (paste a fresh key) than a 429
+        // (wait it out) or a 5xx (transient — retry).
         const body = await res.json().catch(() => ({}));
         const apiMsg = typeof body?.error === "string" ? body.error : null;
         if (res.status === 401) {
@@ -161,11 +161,6 @@ export default function AppPage() {
         // and the rejection arrives as an in-stream `error` event below.
         if (res.status === 429) {
           throw new Error("Rate limit hit — wait a moment, then retry.");
-        }
-        if (res.status === 503) {
-          throw new Error(
-            apiMsg ?? "Inference unavailable — pass a BYOK key or use demo mode."
-          );
         }
         throw new Error(apiMsg ?? `API returned ${res.status}.`);
       }

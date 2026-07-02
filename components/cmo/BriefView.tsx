@@ -6,12 +6,13 @@ import CopyModal from "./CopyModal";
 import { CopySchema, type Kerf, type CalendarEntry, type Copy } from "@/lib/schema";
 
 /**
- * Saved-kerf view. Reads the BYOK key from localStorage so a logged-in
- * user revisiting their archive can still hit /api/copy without paying
- * out of our server credit pool. Falls back to session auth if no key
- * is stored — the server then runs on its own credentials. The session
- * fallback is the reason this component exists separately from the
- * working-app variant in /app/page.tsx.
+ * Saved-kerf view. Account-free: reads the BYOK key from this browser's
+ * localStorage so a visitor revisiting their archive can regenerate copy
+ * for a saved kerf without re-pasting the key. If no key is stored, the
+ * request carries no X-Anthropic-Key and /api/copy returns demo content
+ * (or 401 for a live request) — there is no login or session to fall back
+ * on. This is a lighter variant of the copy flow in /app/page.tsx, scoped
+ * to a kerf loaded from the archive rather than one freshly cut.
  */
 export default function KerfView({ kerf }: { kerf: Kerf }) {
   const [selectedEntry, setSelectedEntry] = useState<CalendarEntry | null>(null);

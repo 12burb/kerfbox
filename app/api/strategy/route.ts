@@ -232,7 +232,7 @@ export async function POST(req: Request) {
   // Budget: 10 strategy runs per hour — a Kerf is expensive on both
   // wall-clock and dollars, and a real user iterates 2-3 times.
   const rl = await checkRateLimit(
-    rateLimitKey({ prefix: "strategy", userId: null, apiKeyId: null, req }),
+    rateLimitKey({ prefix: "strategy", req }),
     10,
     60 * 60 * 1000
   );

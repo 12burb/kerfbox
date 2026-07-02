@@ -1,4 +1,5 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { Fraunces, Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import {
   SITE_URL,
@@ -8,6 +9,25 @@ import {
   SITE_KEYWORDS,
   REPO_URL,
 } from "@/lib/site";
+
+// Self-hosted via next/font: fonts ship from our own origin with zero
+// render-blocking third-party CSS (the old Google Fonts @import cost a
+// fonts.googleapis.com round-trip before first paint). All three are
+// variable fonts, so one file per family covers every weight we use.
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  style: ["normal", "italic"],
+  axes: ["opsz"],
+  variable: "--font-fraunces",
+});
+const hankenGrotesk = Hanken_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-hanken-grotesk",
+});
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains-mono",
+});
 
 const TITLE = `${SITE_NAME} — ${SITE_TAGLINE}`;
 
@@ -57,6 +77,14 @@ export const metadata: Metadata = {
     },
   },
   category: "technology",
+};
+
+// theme-color paints mobile browser chrome (address bar, task switcher)
+// in the site's near-black instead of default white — the manifest already
+// declares it for installed-PWA contexts, but the meta tag is what normal
+// tab browsing reads.
+export const viewport: Viewport = {
+  themeColor: "#0a0a0c",
 };
 
 /**
@@ -113,7 +141,10 @@ export default function RootLayout({
   // Account-free: no auth provider wraps the tree. Pages are public and the
   // API authorizes per-request on the caller's own Anthropic key (BYOK).
   return (
-    <html lang="en">
+    <html
+      lang="en"
+      className={`${fraunces.variable} ${hankenGrotesk.variable} ${jetbrainsMono.variable}`}
+    >
       <body className="antialiased">
         <script
           type="application/ld+json"

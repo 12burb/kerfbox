@@ -161,16 +161,6 @@ export function kerfSlug(kerf: Kerf): string {
   return slug || "kerf";
 }
 
-/**
- * @deprecated Use kerfToMarkdown. Retained as alias for legacy callers.
- */
-export const briefToMarkdown = kerfToMarkdown;
-
-/**
- * @deprecated Use kerfSlug.
- */
-export const briefSlug = kerfSlug;
-
 /* ------------------------------------------------------------------ *
  * Portable JSON export / import
  *

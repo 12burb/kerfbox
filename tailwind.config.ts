@@ -25,9 +25,9 @@ const config: Config = {
         border: "var(--accent-dim)",
       },
       fontFamily: {
-        sans: ["Hanken Grotesk", "system-ui", "sans-serif"],
-        serif: ["Fraunces", "serif"],
-        mono: ["JetBrains Mono", "monospace"],
+        sans: ["var(--font-hanken-grotesk)", "system-ui", "sans-serif"],
+        serif: ["var(--font-fraunces)", "serif"],
+        mono: ["var(--font-jetbrains-mono)", "monospace"],
       },
     },
   },

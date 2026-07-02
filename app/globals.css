@@ -1,4 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;0,9..144,900;1,9..144,300;1,9..144,600&family=Hanken+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+/* Fonts are self-hosted via next/font (app/layout.tsx) — the CSS variables
+   --font-fraunces / --font-hanken-grotesk / --font-jetbrains-mono are set
+   on <html>. No third-party font CSS is fetched at runtime. */
 
 @tailwind base;
 @tailwind components;
@@ -25,13 +27,13 @@ html, body {
 }
 
 body {
-  font-family: 'Hanken Grotesk', system-ui, sans-serif;
+  font-family: var(--font-hanken-grotesk), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
 @layer utilities {
-  .serif { font-family: 'Fraunces', serif; font-optical-sizing: auto; }
-  .mono { font-family: 'JetBrains Mono', monospace; }
+  .serif { font-family: var(--font-fraunces), serif; font-optical-sizing: auto; }
+  .mono { font-family: var(--font-jetbrains-mono), monospace; }
 
   .grid-bg {
     background-image:
@@ -64,7 +66,7 @@ body {
     outline: none;
     color: #f5f1e8;
     transition: border-color 0.2s;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-jetbrains-mono), monospace;
   }
   .input-field:focus { border-color: #ff1744; }
   .input-field::placeholder { color: #7a7a82; }

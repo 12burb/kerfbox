@@ -147,36 +147,6 @@ export const CopySchema = z.object({
 });
 
 /* ============================================================
- * Legacy: BriefSchema (v0.1)
- *
- * Retained for backward-compat with rows already saved in
- * `briefs.brief_json` before the v0.2 rebrand. Read paths use
- * a permissive parser; new strategy generation always returns Kerf.
- * Do not extend.
- * ============================================================ */
-
-export const PositioningSchema = z.object({
-  angle: z.string(),
-  rationale: z.string(),
-});
-
-export const LegacyConceptSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  why_now: z.string(),
-  hook: z.string(),
-});
-
-export const BriefSchema = z.object({
-  company_summary: z.string(),
-  research_findings: z.array(SignalSchema),
-  market_gap: z.string(),
-  positioning: PositioningSchema,
-  concepts: z.array(LegacyConceptSchema),
-  calendar: z.array(CalendarEntrySchema),
-});
-
-/* ============================================================
  * Inferred types
  * ============================================================ */
 
@@ -189,12 +159,6 @@ export type Concept = z.infer<typeof ConceptSchema>;
 export type CalendarEntry = z.infer<typeof CalendarEntrySchema>;
 export type Kerf = z.infer<typeof KerfSchema>;
 export type Copy = z.infer<typeof CopySchema>;
-
-// Legacy
-export type Positioning = z.infer<typeof PositioningSchema>;
-export type LegacyConcept = z.infer<typeof LegacyConceptSchema>;
-export type ResearchFinding = Signal;
-export type Brief = z.infer<typeof BriefSchema>;
 
 /* ============================================================
  * Request shapes

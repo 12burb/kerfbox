@@ -18,7 +18,7 @@ const BODY = "#cfc8ba";
 const BG_2 = "#121215";
 
 const FREE_FEATURES = [
-  "Unlimited kerfs with your own Anthropic key (BYOK)",
+  "Kerfs on your own Anthropic key (BYOK) — no metering by us, just your Anthropic bill",
   "Or connect it to Claude over the MCP server — no key to paste",
   "Full REST API + MCP server for agents — no account, no API key",
   "Save kerfs in your browser; export & import as JSON to share",
@@ -91,8 +91,9 @@ export default function PricingPage() {
         <p className="mono text-[10px] mt-12 leading-relaxed" style={{ color: MUTED }}>
           Your Anthropic key lives only in your browser and is sent to our API as a
           single per-request header — never stored, logged, or proxied. Building an
-          agent or self-hosting? Point the API or MCP server at your own key and run
-          unmetered.{" "}
+          agent or self-hosting? Point the API or MCP server at your own key — we add
+          no metering (only a per-IP abuse cap); the only bill is your own Anthropic
+          usage.{" "}
           <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="underline decoration-dotted" style={{ color: ACCENT }}>
             See the source →
           </a>

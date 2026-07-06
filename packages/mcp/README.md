@@ -87,20 +87,29 @@ Add to `.cursor/mcp.json` in your project (or globally):
 
 ### Custom Agent SDK build
 
-```ts
-import { ClaudeAgentSDK } from "@anthropic-ai/agent-sdk";
+Using [`@anthropic-ai/claude-agent-sdk`](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk):
 
-const agent = new ClaudeAgentSDK({
-  mcpServers: {
-    kerfbox: {
-      command: "npx",
-      args: ["-y", "@kerfbox/mcp"],
-      env: {
-        KERFBOX_BYOK_ANTHROPIC_KEY: process.env.KERFBOX_BYOK_ANTHROPIC_KEY!,
+```ts
+import { query } from "@anthropic-ai/claude-agent-sdk";
+
+for await (const message of query({
+  prompt: "Cut a kerf for https://example.com targeting indie founders",
+  options: {
+    mcpServers: {
+      kerfbox: {
+        command: "npx",
+        args: ["-y", "@kerfbox/mcp"],
+        env: {
+          KERFBOX_BYOK_ANTHROPIC_KEY: process.env.KERFBOX_BYOK_ANTHROPIC_KEY!,
+        },
       },
     },
+    // MCP tools are named mcp__<server>__<tool>.
+    allowedTools: ["mcp__kerfbox__cut_kerf", "mcp__kerfbox__generate_copy"],
   },
-});
+})) {
+  if (message.type === "result") console.log(message.result);
+}
 ```
 
 ---

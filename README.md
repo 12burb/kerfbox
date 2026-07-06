@@ -41,7 +41,7 @@ prompt.
   own key is passed per request and never stored, logged, or proxied
 - **Upstash Redis** (or Vercel KV) for distributed, per-IP rate limiting; falls
   back to an in-memory limiter when unconfigured
-- **MCP server** published as [`@kerfbox/mcp`](packages/mcp)
+- **MCP server** in-repo at [`packages/mcp`](packages/mcp) (npm publish as `@kerfbox/mcp` pending)
 
 ---
 
@@ -136,7 +136,9 @@ npx -y @kerfbox/mcp
 
 Tools: `cut_kerf` and `generate_copy`. No API key needed; set
 `KERFBOX_BYOK_ANTHROPIC_KEY` for live inference or call with `demo: true`. See
-[`packages/mcp`](packages/mcp) for configuration.
+[`packages/mcp`](packages/mcp) for configuration. (Until the npm publish lands,
+run it from a repo checkout: `npm install && npm run build` in `packages/mcp`,
+then point your MCP host at `node packages/mcp/dist/index.js`.)
 
 ---
 

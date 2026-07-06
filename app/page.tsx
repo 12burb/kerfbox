@@ -61,7 +61,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "What if my kerf is bad?",
-    a: "Generate another. Runs are unmetered with BYOK — most users iterate 2–3 times to find the cut that holds. The refusal rule will tell you exactly what's missing so the next run is sharper.",
+    a: "Generate another. We add no metering on BYOK runs — you pay only your own Anthropic bill (a per-IP abuse cap of 10 runs/hour aside). Most users iterate 2–3 times to find the cut that holds; the refusal rule tells you exactly what's missing so the next run is sharper.",
   },
 ];
 
@@ -443,7 +443,7 @@ export default function LandingPage() {
                 Pay Anthropic at cost. We charge nothing.
               </div>
               <ul className="space-y-2 text-sm mb-8 flex-1" style={{ color: MUTED }}>
-                <li>· Unlimited kerfs with your own key</li>
+                <li>· Kerfs on your own key — no metering by us, just your Anthropic bill</li>
                 <li>· Or connect to Claude over MCP — no key to paste</li>
                 <li>· Open REST API + MCP — no account, no API key</li>
                 <li>· Save in your browser · export &amp; import as JSON</li>

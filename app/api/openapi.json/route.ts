@@ -58,7 +58,7 @@ export function GET(req: Request) {
             "HTTP status is 200 for both success and refusal. Clients MUST branch on the " +
             "SSE event `type`, not the HTTP status, to detect failure. The only non-200 " +
             "responses are pre-stream errors: 400 (malformed request), 401 (no Anthropic " +
-            "key and `demo` not set), 429 (rate limit).\n\n" +
+            "key and `demo` not set), 413 (body over 512 KB), 429 (rate limit).\n\n" +
             "**Refusal rule:** if `wedge.moat` does not name a competitor from " +
             "`cluster_map` and give a structural reason, the route emits an `error` event " +
             "with a 'Kerf rejected' message. Re-run with sharper inputs.",
@@ -82,6 +82,7 @@ export function GET(req: Request) {
             },
             "400": { $ref: "#/components/responses/BadRequest" },
             "401": { $ref: "#/components/responses/Unauthorized" },
+            "413": { $ref: "#/components/responses/PayloadTooLarge" },
             "429": { $ref: "#/components/responses/RateLimited" },
           },
         },
@@ -113,9 +114,27 @@ export function GET(req: Request) {
                 },
               },
             },
-            "400": { $ref: "#/components/responses/BadRequest" },
+            "400": {
+              description:
+                "Invalid request body, or `entry.concept_id` does not match any " +
+                "concept in the provided `kerf`.",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/Error" },
+                },
+              },
+            },
             "401": { $ref: "#/components/responses/Unauthorized" },
+            "413": { $ref: "#/components/responses/PayloadTooLarge" },
             "429": { $ref: "#/components/responses/RateLimited" },
+            "500": {
+              description: "Inference failed (upstream error). Safe to retry.",
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/Error" },
+                },
+              },
+            },
             "502": {
               description: "Upstream model returned malformed output.",
               content: {
@@ -154,6 +173,12 @@ export function GET(req: Request) {
             "Live inference was requested but no Anthropic key was provided (no " +
             "`X-Anthropic-Key` header, and no server key on this instance) and `demo` " +
             "was not set. Pass a BYOK key or set `demo: true`.",
+          content: {
+            "application/json": { schema: { $ref: "#/components/schemas/Error" } },
+          },
+        },
+        PayloadTooLarge: {
+          description: "Request body exceeds the 512 KB byte cap.",
           content: {
             "application/json": { schema: { $ref: "#/components/schemas/Error" } },
           },
@@ -320,6 +345,7 @@ export function GET(req: Request) {
             cluster_map: {
               type: "array",
               minItems: 1,
+              maxItems: 10,
               items: { $ref: "#/components/schemas/Cluster" },
             },
             kerf: { $ref: "#/components/schemas/KerfCut" },
@@ -330,10 +356,16 @@ export function GET(req: Request) {
             },
             concepts: {
               type: "array",
+              minItems: 3,
+              maxItems: 3,
+              description: "Exactly 3 concepts — enforced server-side.",
               items: { $ref: "#/components/schemas/Concept" },
             },
             calendar: {
               type: "array",
+              minItems: 7,
+              maxItems: 7,
+              description: "Exactly 7 entries (a 7-day rollout) — enforced server-side.",
               items: { $ref: "#/components/schemas/CalendarEntry" },
             },
           },

@@ -25,7 +25,7 @@ export const GAMING_KERF: Kerf = {
       cluster: "Gameplay-clip churn",
       examples: ["Apex Legends", "Valorant", "Call of Duty Warzone", "Rainbow Six Siege"],
       pattern:
-        "All five publishers post highlight reels and pro-play clips at high frequency — the audience has tuned them out.",
+        "All four publishers post highlight reels and pro-play clips at high frequency — the audience has tuned them out.",
     },
     {
       cluster: "Polished cinematic drops",

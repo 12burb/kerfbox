@@ -37,6 +37,3 @@ next-env.d.ts
 
 # local Claude Code config (per-machine, contains absolute paths)
 .claude/
-
-
-.vercel

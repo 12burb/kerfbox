@@ -4,8 +4,8 @@
  * Baseline security headers applied to every response.
  *
  * Threat model:
- *   - Clickjacking: a malicious site iframes /app and tricks a signed-in
- *     user into clicking through to a state-changing action. X-Frame-Options
+ *   - Clickjacking: a malicious site iframes /app and tricks a visitor
+ *     into clicking through to an action they didn't intend. X-Frame-Options
  *     + CSP `frame-ancestors 'none'` block this. We do both because not
  *     every consumer (e.g. older corporate proxies, archive snapshots)
  *     honors CSP, but every modern browser honors X-Frame-Options.

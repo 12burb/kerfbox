@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, ChevronRight, Copy as CopyIcon, Download, Quote, Shield } from "lucide-react";
 import { ACCENT, ACCENT_DIM, BG_2, BG_3, INK, MUTED, platformStyle } from "./shared";
 import type { Kerf, CalendarEntry } from "@/lib/schema";
@@ -9,6 +9,16 @@ import { kerfSlug, kerfToMarkdown, downloadText } from "@/lib/export";
 type Props = {
   kerf: Kerf;
   onEntryClick: (entry: CalendarEntry) => void;
+  /**
+   * Epoch ms this kerf was generated/saved — shown in the masthead. When
+   * omitted (fresh runs, demo carousel), today's date is filled in after
+   * mount: this component is server-rendered on the landing page, and an
+   * inline `new Date()` hydrates to a mismatch whenever the server's UTC
+   * date differs from the visitor's local date.
+   */
+  generatedAt?: number;
+  /** Originating url/audience — threaded into the markdown export header. */
+  meta?: { url?: string; audience?: string };
   /**
    * When false, calendar entries render as static rows (no click, no
    * hover transform, no chevron, no "click → generate copy" hint).
@@ -31,11 +41,32 @@ type Props = {
  * it's the load-bearing claim — the route refused to ship if it was
  * undefendable, so by the time it renders here, it has earned the emphasis.
  */
-export default function KerfStage({ kerf, onEntryClick, interactive = true }: Props) {
+export default function KerfStage({
+  kerf,
+  onEntryClick,
+  generatedAt,
+  meta,
+  interactive = true,
+}: Props) {
   const [copiedClaim, setCopiedClaim] = useState(false);
+  // Client-side "now" for kerfs without a stored timestamp. Starts null so
+  // server and first client render agree (no date), then fills in.
+  const [mountedNow, setMountedNow] = useState<number | null>(null);
+  useEffect(() => {
+    setMountedNow(Date.now());
+  }, []);
+  const stamp = generatedAt ?? mountedNow;
+  const dateLabel =
+    stamp === null
+      ? ""
+      : new Date(stamp).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
 
   const exportMarkdown = () => {
-    const md = kerfToMarkdown(kerf);
+    const md = kerfToMarkdown(kerf, meta);
     const filename = `kerf-${kerfSlug(kerf)}.md`;
     downloadText(filename, md);
   };
@@ -59,12 +90,7 @@ export default function KerfStage({ kerf, onEntryClick, interactive = true }: Pr
       >
         <div>
           <div className="mono text-[10px] uppercase tracking-widest mb-2" style={{ color: ACCENT }}>
-            The Kerf ·{" "}
-            {new Date().toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-            })}
+            The Kerf{dateLabel ? ` · ${dateLabel}` : ""}
           </div>
           <h2 className="serif text-2xl md:text-3xl" style={{ fontWeight: 400 }}>
             {kerf.company_summary}

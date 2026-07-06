@@ -81,7 +81,11 @@ export default function KerfDetailPage({
             </Link>
           </div>
         </header>
-        <KerfView kerf={entry.kerf} />
+        <KerfView
+          kerf={entry.kerf}
+          generatedAt={entry.createdAt}
+          meta={{ url: entry.url, audience: entry.audience }}
+        />
       </div>
     </div>
   );

@@ -77,9 +77,22 @@ export default function CopyModal({ entry, copy, loading, error, onClose, onRetr
   const platform = platformStyle(entry.platform);
   const fullCopy = copy ? buildFullCopy(entry, copy) : "";
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
-  // Modal lifecycle: lock body scroll, capture/restore focus, wire Esc.
+  // Track the latest onClose in a ref so the lifecycle effect can stay
+  // mount-only. Parents pass inline arrows, so keying the effect on
+  // `onClose` would tear it down and re-run it on every parent render —
+  // re-capturing previouslyFocused as the modal's OWN close button and
+  // breaking focus restore on close.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
+  // Modal lifecycle: lock body scroll, capture/restore focus, wire Esc,
+  // and trap Tab inside the dialog (WAI-ARIA modal pattern — without the
+  // trap, Tab walks out into the page hidden behind the overlay).
   useEffect(() => {
     previouslyFocused.current = document.activeElement as HTMLElement | null;
     closeBtnRef.current?.focus();
@@ -89,7 +102,29 @@ export default function CopyModal({ entry, copy, loading, error, onClose, onRetr
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const root = dialogRef.current;
+      if (!root) return;
+      const focusables = Array.from(
+        root.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input, textarea, select, [tabindex]:not([tabindex="-1"])'
+        )
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey) {
+        if (active === first || !root.contains(active)) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (active === last || !root.contains(active)) {
+        e.preventDefault();
+        first.focus();
       }
     }
     window.addEventListener("keydown", onKey);
@@ -99,7 +134,7 @@ export default function CopyModal({ entry, copy, loading, error, onClose, onRetr
       document.body.style.overflow = prevOverflow;
       previouslyFocused.current?.focus?.();
     };
-  }, [onClose]);
+  }, []);
 
   return (
     <div
@@ -108,6 +143,7 @@ export default function CopyModal({ entry, copy, loading, error, onClose, onRetr
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="copy-modal-title"

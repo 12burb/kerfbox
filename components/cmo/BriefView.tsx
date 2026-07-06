@@ -14,7 +14,17 @@ import { CopySchema, type Kerf, type CalendarEntry, type Copy } from "@/lib/sche
  * back on. This is a lighter variant of the copy flow in /app/page.tsx,
  * scoped to a kerf loaded from the archive rather than one freshly cut.
  */
-export default function KerfView({ kerf }: { kerf: Kerf }) {
+export default function KerfView({
+  kerf,
+  generatedAt,
+  meta,
+}: {
+  kerf: Kerf;
+  /** Epoch ms the kerf was saved — shown in KerfStage's masthead. */
+  generatedAt?: number;
+  /** Originating url/audience — threaded into the markdown export. */
+  meta?: { url?: string; audience?: string };
+}) {
   const [selectedEntry, setSelectedEntry] = useState<CalendarEntry | null>(null);
   const [copyData, setCopyData] = useState<Copy | null>(null);
   const [copyLoading, setCopyLoading] = useState(false);
@@ -67,7 +77,7 @@ export default function KerfView({ kerf }: { kerf: Kerf }) {
 
   return (
     <>
-      <KerfStage kerf={kerf} onEntryClick={generateCopy} />
+      <KerfStage kerf={kerf} onEntryClick={generateCopy} generatedAt={generatedAt} meta={meta} />
       {selectedEntry && (
         <CopyModal
           entry={selectedEntry}

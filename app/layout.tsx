@@ -110,7 +110,8 @@ const structuredData = {
         "@type": "Offer",
         price: "0",
         priceCurrency: "USD",
-        description: "Beta — unmetered with your own Anthropic key (BYOK).",
+        description:
+          "Free — runs on your own Anthropic key (BYOK); kerf.box adds no metering or markup.",
       },
       featureList: [
         "Cluster map of where a category competes",

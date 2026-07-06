@@ -76,10 +76,15 @@ export default function InputStage({
 
         <div className="grid md:grid-cols-2 gap-8 mb-8">
           <div>
-            <label className="mono text-[10px] uppercase tracking-widest mb-3 block" style={{ color: MUTED }}>
+            <label
+              htmlFor="kerf-url"
+              className="mono text-[10px] uppercase tracking-widest mb-3 block"
+              style={{ color: MUTED }}
+            >
               01 · Product URL
             </label>
             <input
+              id="kerf-url"
               type="text"
               value={url}
               onChange={(e) => onUrlChange(e.target.value)}
@@ -88,10 +93,15 @@ export default function InputStage({
             />
           </div>
           <div>
-            <label className="mono text-[10px] uppercase tracking-widest mb-3 block" style={{ color: MUTED }}>
+            <label
+              htmlFor="kerf-audience"
+              className="mono text-[10px] uppercase tracking-widest mb-3 block"
+              style={{ color: MUTED }}
+            >
               02 · Audience (one line)
             </label>
             <input
+              id="kerf-audience"
               type="text"
               value={audience}
               onChange={(e) => onAudienceChange(e.target.value)}
@@ -104,6 +114,7 @@ export default function InputStage({
         {/* BYOK row */}
         <div className="mb-6">
           <label
+            htmlFor="kerf-byok-key"
             className="mono text-[10px] uppercase tracking-widest mb-3 flex items-center gap-2"
             style={{ color: MUTED }}
           >
@@ -113,6 +124,7 @@ export default function InputStage({
           </label>
           <div className="flex items-stretch gap-2">
             <input
+              id="kerf-byok-key"
               type={keyVisible ? "text" : "password"}
               value={byokKey}
               onChange={(e) => onByokKeyChange(e.target.value)}

@@ -192,7 +192,7 @@ export default function ArchivePage() {
                         onClick={() => onDelete(entry.id)}
                         className="mono text-[10px] uppercase tracking-widest"
                         style={{ color: MUTED }}
-                        aria-label="delete this kerf"
+                        aria-label={`delete kerf: ${label}`}
                       >
                         delete
                       </button>

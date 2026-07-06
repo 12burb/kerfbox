@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import KerfStage from "./BriefStage";
 import { ACCENT, ACCENT_DIM, BG_2, MUTED } from "./shared";
 import { DEMOS, type DemoId } from "@/lib/demos";
@@ -21,17 +21,44 @@ import { DEMOS, type DemoId } from "@/lib/demos";
 export default function DemoCarousel() {
   const [activeId, setActiveId] = useState<DemoId>("gaming");
   const active = DEMOS.find((d) => d.id === activeId) ?? DEMOS[0];
+  const tabRefs = useRef(new Map<DemoId, HTMLButtonElement>());
+
+  // Roving tabindex needs arrow keys to actually rove (WAI-ARIA tabs
+  // pattern): inactive tabs are tabIndex={-1}, so without this a keyboard
+  // user could reach only the active tab and never switch verticals.
+  const onTablistKeyDown = (e: React.KeyboardEvent) => {
+    const idx = DEMOS.findIndex((d) => d.id === activeId);
+    let next: number;
+    if (e.key === "ArrowRight") next = (idx + 1) % DEMOS.length;
+    else if (e.key === "ArrowLeft") next = (idx - 1 + DEMOS.length) % DEMOS.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = DEMOS.length - 1;
+    else return;
+    e.preventDefault();
+    const id = DEMOS[next].id;
+    setActiveId(id);
+    tabRefs.current.get(id)?.focus();
+  };
 
   return (
     <div>
       {/* Tab strip — proper tablist semantics so screen readers announce
           "tab 1 of 3" rather than three identical-looking buttons. */}
-      <div role="tablist" aria-label="demo verticals" className="flex flex-wrap items-stretch gap-2 mb-6">
+      <div
+        role="tablist"
+        aria-label="demo verticals"
+        className="flex flex-wrap items-stretch gap-2 mb-6"
+        onKeyDown={onTablistKeyDown}
+      >
         {DEMOS.map((d) => {
           const isActive = d.id === activeId;
           return (
             <button
               key={d.id}
+              ref={(el) => {
+                if (el) tabRefs.current.set(d.id, el);
+                else tabRefs.current.delete(d.id);
+              }}
               role="tab"
               id={`demo-tab-${d.id}`}
               aria-selected={isActive}

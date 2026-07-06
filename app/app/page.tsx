@@ -101,6 +101,29 @@ export default function AppPage() {
       );
       return;
     }
+    // Demo mode streams canned content, but /api/strategy still schema-
+    // validates the body (http(s) URL, audience 1-500 chars). Substitute
+    // well-formed defaults for blank/invalid fields so "run with demo data
+    // (no key needed)" never 400s on inputs the demo doesn't even use —
+    // and reflect them in state so the working screen and archive metadata
+    // stay coherent.
+    let effectiveUrl = url.trim();
+    let effectiveAudience = audience.trim();
+    if (demoMode) {
+      let urlOk = false;
+      try {
+        const protocol = new URL(effectiveUrl).protocol;
+        urlOk = protocol === "http:" || protocol === "https:";
+      } catch {
+        urlOk = false;
+      }
+      if (!urlOk) effectiveUrl = "https://linear.app";
+      effectiveAudience =
+        (effectiveAudience || "Indie SaaS founders shipping their first $1k MRR").slice(0, 500);
+      if (effectiveUrl !== url) setUrl(effectiveUrl);
+      if (effectiveAudience !== audience) setAudience(effectiveAudience);
+    }
+
     // Abort any prior in-flight stream so its trailing events can't land
     // in our state. New AbortController for THIS run.
     abortRef.current?.abort();
@@ -143,7 +166,7 @@ export default function AppPage() {
       const res = await fetch("/api/strategy", {
         method: "POST",
         headers,
-        body: JSON.stringify({ url, audience, demo: demoMode }),
+        body: JSON.stringify({ url: effectiveUrl, audience: effectiveAudience, demo: demoMode }),
         signal: controller.signal,
       });
       if (!res.ok) {
@@ -373,7 +396,7 @@ export default function AppPage() {
 
         {stage === "kerf" && kerf && (
           <>
-            <KerfStage kerf={kerf} onEntryClick={generateCopy} />
+            <KerfStage kerf={kerf} onEntryClick={generateCopy} meta={{ url, audience }} />
             <SaveBar
               state={saveState}
               onSave={saveKerf}

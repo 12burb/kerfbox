@@ -50,5 +50,10 @@ export async function* readSSE(
     }
   } finally {
     if (signal) signal.removeEventListener("abort", onAbort);
+    // Abort isn't the only early exit: a consumer that `break`s out of
+    // for-await (e.g. on the terminal `kerf` event) lands here via the
+    // generator's return() with the reader still holding the socket.
+    // cancel() after a clean close is a harmless no-op.
+    void reader.cancel().catch(() => {});
   }
 }

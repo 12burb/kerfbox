@@ -84,7 +84,9 @@ export default function WorkingStage({ url, audience, researchSteps, elapsed }: 
       </div>
 
       <div className="mt-4 mono text-[11px] flex items-center gap-4" style={{ color: MUTED }}>
-        <span>Model · claude-sonnet-4</span>
+        {/* Deliberately generic: the actual model id is a server-side env
+            override (KERFBOX_STRATEGY_MODEL) the client can't know. */}
+        <span>Model · Claude</span>
         <span>·</span>
         <span>Tools · web_search</span>
         <span>·</span>

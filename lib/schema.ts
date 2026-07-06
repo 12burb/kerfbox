@@ -179,8 +179,8 @@ export const StrategyRequestSchema = z.object({
   url: httpUrl,
   audience: z.string().min(1).max(500),
   // Optional demo flag. Declared here so it's part of the validated shape
-  // instead of being read off raw `any`. API-key callers are gated off the
-  // demo path in the route regardless of this value.
+  // instead of being read off raw `any`. When true the route returns canned
+  // content without inference — honored even if a key is also supplied.
   demo: z.boolean().optional(),
 });
 

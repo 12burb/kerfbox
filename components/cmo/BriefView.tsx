@@ -9,10 +9,10 @@ import { CopySchema, type Kerf, type CalendarEntry, type Copy } from "@/lib/sche
  * Saved-kerf view. Account-free: reads the BYOK key from this browser's
  * localStorage so a visitor revisiting their archive can regenerate copy
  * for a saved kerf without re-pasting the key. If no key is stored, the
- * request carries no X-Anthropic-Key and /api/copy returns demo content
- * (or 401 for a live request) — there is no login or session to fall back
- * on. This is a lighter variant of the copy flow in /app/page.tsx, scoped
- * to a kerf loaded from the archive rather than one freshly cut.
+ * request asks for canned content via `demo: true` — a keyless request
+ * without that flag would 401, and there is no login or session to fall
+ * back on. This is a lighter variant of the copy flow in /app/page.tsx,
+ * scoped to a kerf loaded from the archive rather than one freshly cut.
  */
 export default function KerfView({ kerf }: { kerf: Kerf }) {
   const [selectedEntry, setSelectedEntry] = useState<CalendarEntry | null>(null);
@@ -38,14 +38,15 @@ export default function KerfView({ kerf }: { kerf: Kerf }) {
     setCopyError(null);
     setCopyLoading(true);
     try {
+      const key = byokKey.trim();
       const headers: HeadersInit = { "Content-Type": "application/json" };
-      if (byokKey.trim()) {
-        headers["X-Anthropic-Key"] = byokKey.trim();
+      if (key) {
+        headers["X-Anthropic-Key"] = key;
       }
       const res = await fetch("/api/copy", {
         method: "POST",
         headers,
-        body: JSON.stringify({ kerf, entry }),
+        body: JSON.stringify(key ? { kerf, entry } : { kerf, entry, demo: true }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));

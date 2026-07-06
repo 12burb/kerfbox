@@ -120,9 +120,11 @@ export default function AppPage() {
     // `error` events (HTTP status is already 200 by then) well before
     // this timer fires.
     let watchdog: ReturnType<typeof setTimeout> | null = null;
+    let watchdogFired = false;
     const armWatchdog = () => {
       if (watchdog) clearTimeout(watchdog);
       watchdog = setTimeout(() => {
+        watchdogFired = true;
         controller.abort();
       }, 120_000);
     };
@@ -225,9 +227,12 @@ export default function AppPage() {
         (err instanceof DOMException && err.name === "AbortError") ||
         (err instanceof Error && err.name === "AbortError")
       ) {
-        // Watchdog fired vs. user reset: heuristic — if we're still on
-        // the working stage, the user didn't reset, so it was the timer.
-        if (stage === "working") {
+        // Watchdog fired vs. user reset/unmount: the timer sets
+        // watchdogFired before aborting, so this is exact. (Don't infer it
+        // from `stage` — that closure variable is frozen at the render
+        // that created this run(), always "input", so a stage check here
+        // is dead code and the timeout would be silently swallowed.)
+        if (watchdogFired) {
           setError("Stream timed out after 2 minutes. Retry, or try demo mode.");
           setStage("input");
         }
@@ -261,14 +266,19 @@ export default function AppPage() {
     setCopyError(null);
     setCopyLoading(true);
     try {
+      const key = byokKey.trim();
       const headers: HeadersInit = { "Content-Type": "application/json" };
-      if (byokKey.trim()) {
-        headers["X-Anthropic-Key"] = byokKey.trim();
+      if (key) {
+        headers["X-Anthropic-Key"] = key;
       }
+      // Keyless sessions (demo runs) must ask for canned copy explicitly —
+      // without `demo: true` the route 401s with an API-level hint the UI
+      // user can't act on, dead-ending the "no key needed" funnel at the
+      // first calendar click.
       const res = await fetch("/api/copy", {
         method: "POST",
         headers,
-        body: JSON.stringify({ kerf, entry }),
+        body: JSON.stringify(key ? { kerf, entry } : { kerf, entry, demo: true }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));

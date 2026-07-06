@@ -7,8 +7,11 @@
  * fences. The naive `replace(/```json|```/g)` + JSON.parse pipeline used
  * to break on any of those edge cases.
  *
- * Approach: strip fences, then brace-count to find the first balanced
- * top-level object. String tracking is required because legitimate
+ * Approach: brace-count to find the first balanced top-level object.
+ * Fences and prose are inert to the scanner (backticks are not braces),
+ * so no pre-stripping — an earlier global fence-strip regex corrupted
+ * legitimate backticks INSIDE string values (a caption containing a
+ * fenced code snippet). String tracking is required because legitimate
  * payloads contain `{` and `}` inside string literals (a `claim` value
  * could legitimately be `"{user} says"`); naive counting would unbalance.
  *
@@ -17,13 +20,12 @@
  * JSON.parse and risking a less informative TypeError.
  */
 export function extractJsonObject(s: string): string | null {
-  const stripped = s.replace(/```json\s*|\s*```/g, "");
   let depth = 0;
   let start = -1;
   let inStr = false;
   let escape = false;
-  for (let i = 0; i < stripped.length; i++) {
-    const ch = stripped[i];
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
     if (inStr) {
       if (escape) escape = false;
       else if (ch === "\\") escape = true;
@@ -40,7 +42,7 @@ export function extractJsonObject(s: string): string | null {
     } else if (ch === "}") {
       depth--;
       if (depth === 0 && start !== -1) {
-        return stripped.slice(start, i + 1);
+        return s.slice(start, i + 1);
       }
     }
   }

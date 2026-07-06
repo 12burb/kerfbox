@@ -16,7 +16,10 @@ import Anthropic from "@anthropic-ai/sdk";
  * demo content) — see app/api/strategy and app/api/copy.
  */
 function serverAnthropicKey(): string | null {
-  return process.env.KERFBOX_ANTHROPIC_KEY ?? process.env.ANTHROPIC_API_KEY ?? null;
+  // `||`, not `??`: an env var set to "" (easy to do in Vercel's dashboard
+  // or a .env line like `KERFBOX_ANTHROPIC_KEY=`) should fall through to
+  // the next candidate, not short-circuit to an empty key.
+  return process.env.KERFBOX_ANTHROPIC_KEY || process.env.ANTHROPIC_API_KEY || null;
 }
 
 /**
@@ -73,6 +76,6 @@ export function extractByokKey(req: Request): string | null {
  * via env: KERFBOX_STRATEGY_MODEL / KERFBOX_COPY_MODEL.
  */
 export const STRATEGY_MODEL =
-  process.env.KERFBOX_STRATEGY_MODEL ?? "claude-sonnet-4-20250514";
+  process.env.KERFBOX_STRATEGY_MODEL || "claude-sonnet-4-20250514";
 export const COPY_MODEL =
-  process.env.KERFBOX_COPY_MODEL ?? "claude-haiku-4-5";
+  process.env.KERFBOX_COPY_MODEL || "claude-haiku-4-5";

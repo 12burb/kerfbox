@@ -40,9 +40,20 @@ const BUCKETS = new Map<string, Bucket>();
 const MAX_BUCKETS = 10_000;
 
 /**
- * Sweep stale buckets when we cross the cap. Cheap O(n) — the cap is small
- * by design. Called from `check()` rather than on a timer (no lifecycle
- * to hook on Vercel functions; rely on traffic to drive cleanup).
+ * Keep the map at or under MAX_BUCKETS. Two passes:
+ *
+ *   1. Sweep stale buckets (no hit inside the window). Covers the normal
+ *      case where old visitors age out.
+ *   2. If every bucket is still live (a spray attack minting fresh keys),
+ *      evict oldest-inserted keys — Map iterates in insertion order — so
+ *      the cap actually holds instead of being a comment. Evicting a live
+ *      bucket resets that key's count, which mildly favors the attacker's
+ *      *individual* keys but bounds our memory; the alternative (unbounded
+ *      growth) is strictly worse.
+ *
+ * O(n) at n=10k only while at the cap. Called from `check()` rather than
+ * on a timer (no lifecycle to hook on Vercel functions; rely on traffic
+ * to drive cleanup).
  */
 function evictIfNeeded(now: number, windowMs: number) {
   if (BUCKETS.size < MAX_BUCKETS) return;
@@ -50,6 +61,12 @@ function evictIfNeeded(now: number, windowMs: number) {
     if (bucket.hits.length === 0 || bucket.hits[bucket.hits.length - 1] < now - windowMs) {
       BUCKETS.delete(k);
     }
+  }
+  if (BUCKETS.size < MAX_BUCKETS) return;
+  let toEvict = BUCKETS.size - MAX_BUCKETS + 1;
+  for (const k of BUCKETS.keys()) {
+    if (toEvict-- <= 0) break;
+    BUCKETS.delete(k);
   }
 }
 
@@ -167,6 +184,14 @@ async function upstashCheck(
   if (!Array.isArray(payload) || payload.length < 5) {
     throw new Error("upstash: unexpected pipeline shape");
   }
+  // The pipeline endpoint returns 200 even when individual commands fail
+  // (wrong-type key, OOM, ACL). A failed ZADD/ZCARD would otherwise read
+  // as count 0 and silently disable the limiter for this key — throw so
+  // the caller falls back to the in-memory check instead.
+  const failed = payload.find((entry) => entry && typeof entry.error === "string");
+  if (failed) {
+    throw new Error(`upstash pipeline command failed: ${failed.error}`);
+  }
   const card = Number(payload[2]?.result ?? 0);
   const rangeResult = payload[3]?.result;
   // ZRANGE WITHSCORES returns [member, score] pairs flattened. We asked
@@ -243,12 +268,16 @@ export async function checkRateLimit(
  * forwarded client IP, with a coarse fallback marker so it's never empty.
  */
 export function rateLimitKey(args: { prefix: string; req: Request }): string {
-  // Prefer `x-real-ip`: on Vercel it's a single, proxy-set value for the
-  // true client IP. `x-forwarded-for` is a client-appendable chain — Vercel
-  // prepends the real IP, but parsing "first entry" is more fragile and
-  // easier to game from behind misconfigured intermediaries. Fall back to
-  // the XFF head only when x-real-ip is absent (e.g. local dev).
+  // Trust model: on Vercel, `x-vercel-forwarded-for` and `x-real-ip` are
+  // overwritten by the platform edge, so a client cannot spoof them —
+  // prefer the Vercel-specific one because nothing else sets it. On a
+  // self-host these are ordinary request headers: they're only trustworthy
+  // if a fronting proxy (nginx, Caddy) overwrites them. A self-host exposed
+  // directly to the internet lets callers pick their own bucket — the
+  // limiter degrades to per-claimed-IP, which still bounds honest traffic
+  // but is not an abuse boundary. Front with a proxy if that matters.
   const ip =
+    args.req.headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() ||
     args.req.headers.get("x-real-ip")?.trim() ||
     args.req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     "anon";

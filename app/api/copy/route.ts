@@ -4,7 +4,7 @@ import { CopyRequestSchema, CopySchema } from "@/lib/schema";
 import { extractByokKey, getAnthropic, hasAnthropicKey, COPY_MODEL } from "@/lib/anthropic";
 import { buildCopyMessages } from "@/lib/prompts";
 import { DEMO_COPY } from "@/lib/demo";
-import { enforceBodyLimit, sanitizeForLog } from "@/lib/api-auth";
+import { enforceBodyLimit, readJsonBodyWithLimit, sanitizeForLog } from "@/lib/api-auth";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { extractJsonObject } from "@/lib/json-extract";
 
@@ -43,12 +43,25 @@ export async function POST(req: Request) {
     );
   }
 
-  const body = await req.json().catch(() => null);
-  const parsed = CopyRequestSchema.safeParse(body);
+  // Enforced (not just declared) byte cap — a chunked request with no
+  // Content-Length gets counted off the wire here.
+  const bodyRead = await readJsonBodyWithLimit(req);
+  if (!bodyRead.ok) return bodyRead.response;
+  const parsed = CopyRequestSchema.safeParse(bodyRead.body);
   if (!parsed.success) {
     return NextResponse.json({ error: "kerf and entry are required." }, { status: 400 });
   }
   const { kerf, entry } = parsed.data;
+  // The entry must belong to the kerf it rides in with (the OpenAPI spec
+  // says "one of kerf.calendar's entries"). Copy quality depends on the
+  // wedge/concept context resolving — a foreign entry would silently
+  // degrade output instead of failing loudly.
+  if (!kerf.concepts.some((c) => c.id === entry.concept_id)) {
+    return NextResponse.json(
+      { error: "entry.concept_id does not match any concept in kerf." },
+      { status: 400 }
+    );
+  }
   const demoRequested = parsed.data.demo === true;
   const byokKey = extractByokKey(req);
   const noKeyAvailable = !byokKey && !hasAnthropicKey();

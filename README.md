@@ -161,3 +161,10 @@ Found a vulnerability? Please report it via the
 
 Deployed on Vercel. Production alias is pinned to `kerfbox.vercel.app` in
 [`vercel.json`](vercel.json). Push to `main` to deploy.
+
+---
+
+## License
+
+MIT — see [`LICENSE`](LICENSE). Free for anyone to use, self-host, fork, or
+build on. The MCP server in [`packages/mcp`](packages/mcp) is MIT-licensed too.

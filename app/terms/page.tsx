@@ -75,10 +75,10 @@ export default function TermsPage() {
                 .
               </li>
               <li>
-                Keep your own Anthropic key (BYOK) secret. You are responsible for
-                any usage and charges incurred under your key; rotate it with
-                Anthropic immediately if it leaks. {SITE_NAME} has no accounts and
-                issues no API keys of its own.
+                Keep your own AI provider key (BYOK) secret. You are responsible
+                for any usage and charges incurred under your key; rotate it with
+                your provider immediately if it leaks. {SITE_NAME} has no accounts
+                and issues no API keys of its own.
               </li>
             </ul>
           </section>
@@ -88,10 +88,11 @@ export default function TermsPage() {
               Bring your own key (BYOK)
             </h2>
             <p>
-              When you supply your own Anthropic API key, you are billed by
-              Anthropic directly and are bound by Anthropic&apos;s terms for that
-              usage. We pass your key through for the single request and never
-              store it.
+              When you supply your own API key — for Anthropic, OpenAI, Google,
+              Moonshot, Alibaba, DeepSeek, Groq, OpenRouter, or any other
+              provider — you are billed by that provider directly and are bound
+              by that provider&apos;s terms for the usage. We pass your key
+              through for the single request and never store it.
             </p>
           </section>
 

@@ -1,6 +1,6 @@
 {
   "name": "kerfbox-mcp",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "MCP server for kerf.box — cut the narrow defensible kerf between where a category clusters and where this brand can stand alone.",
   "license": "MIT",
   "type": "module",
@@ -32,6 +32,10 @@
     "strategy",
     "anthropic",
     "claude",
+    "openai",
+    "gemini",
+    "ollama",
+    "byok",
     "kerf",
     "kerfbox"
   ],

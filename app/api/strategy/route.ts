@@ -1,6 +1,13 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { StrategyRequestSchema, KerfSchema, type SSEEvent, type Kerf } from "@/lib/schema";
-import { extractByokKey, getAnthropic, hasAnthropicKey, STRATEGY_MODEL } from "@/lib/anthropic";
+import { getAnthropic, hasAnthropicKey, STRATEGY_MODEL } from "@/lib/anthropic";
+import {
+  resolveByok,
+  chatCompleteJson,
+  PROVIDERS,
+  PROVIDER_ERROR_PREFIX,
+  type ByokConfig,
+} from "@/lib/providers";
 import { buildKerfMessages } from "@/lib/prompts";
 import { DEMO_KERF } from "@/lib/demo";
 import { enforceBodyLimit, readJsonBodyWithLimit, sanitizeForLog } from "@/lib/api-auth";
@@ -42,6 +49,10 @@ const SAFE_ERROR_PREFIXES = [
   "Model did not return valid JSON",
   "Model returned a malformed kerf",
   "Kerf rejected",
+  // Multi-provider BYOK: chatCompleteJson builds these messages itself
+  // (status + scrubbed provider error.message) — the caller NEEDS them to
+  // fix "model not found" / "invalid key" on their own provider account.
+  PROVIDER_ERROR_PREFIX,
 ];
 function sanitizeStreamError(err: unknown): string {
   if (err instanceof Error) {
@@ -128,10 +139,38 @@ async function runDemoStream(send: (e: SSEEvent) => void, signal: AbortSignal) {
   send({ type: "kerf", kerf: DEMO_KERF });
 }
 
-async function runLiveStream(
+/**
+ * Shared tail of every live path: extract JSON from the model's text,
+ * schema-validate, run the moat refusal rule. Throws only safe-prefixed
+ * errors (see SAFE_ERROR_PREFIXES).
+ */
+function parseKerfFromText(finalText: string): Kerf {
+  const extracted = extractJsonObject(finalText);
+  if (!extracted) {
+    throw new Error("Model did not return valid JSON.");
+  }
+  let rawKerf: unknown;
+  try {
+    rawKerf = JSON.parse(extracted);
+  } catch {
+    throw new Error("Model did not return valid JSON.");
+  }
+  const validated = KerfSchema.safeParse(rawKerf);
+  if (!validated.success) {
+    throw new Error("Model returned a malformed kerf.");
+  }
+  const refusal = validateMoat(validated.data);
+  if (refusal) {
+    throw new Error(refusal);
+  }
+  return validated.data;
+}
+
+async function runAnthropicStream(
   url: string,
   audience: string,
   byokKey: string | null,
+  modelOverride: string | null,
   send: (e: SSEEvent) => void,
   signal: AbortSignal
 ) {
@@ -148,7 +187,7 @@ async function runLiveStream(
   // case: a user iterating on /app) get the discount automatically.
   const stream = client.messages.stream(
     {
-      model: STRATEGY_MODEL,
+      model: modelOverride ?? STRATEGY_MODEL,
       // 8000 leaves headroom for: 7-day calendar × ~600 tokens, 3 concepts ×
       // ~250, cluster_map + wedge + signals with citations. 4000 was hitting
       // the cap occasionally on rich brands and clipping the last calendar
@@ -200,29 +239,53 @@ async function runLiveStream(
     (b): b is Extract<typeof b, { type: "text" }> => b.type === "text"
   );
   const finalText = textBlocks[textBlocks.length - 1]?.text ?? "";
-  const extracted = extractJsonObject(finalText);
-  if (!extracted) {
-    throw new Error("Model did not return valid JSON.");
-  }
+  send({ type: "kerf", kerf: parseKerfFromText(finalText) });
+}
 
-  let rawKerf: unknown;
-  try {
-    rawKerf = JSON.parse(extracted);
-  } catch {
-    throw new Error("Model did not return valid JSON.");
-  }
+/**
+ * Live inference via any OpenAI-compatible provider (OpenAI, Gemini,
+ * Kimi, Qwen, DeepSeek, Groq, OpenRouter, Ollama, custom endpoints).
+ *
+ * One non-streaming chat completion — these providers get no web_search
+ * tool, so there are no research phases to narrate. The single step is
+ * honest about that: the `finding` tells the caller this kerf runs on
+ * model knowledge, and lib/prompts.ts (webSearch: false) forbids the
+ * model from fabricating citations, so signals arrive with empty
+ * citation lists instead of invented URLs.
+ */
+async function runOpenAICompatStream(
+  url: string,
+  audience: string,
+  cfg: Extract<ByokConfig, { kind: "openai-compatible" }>,
+  send: (e: SSEEvent) => void,
+  signal: AbortSignal
+) {
+  const providerLabel = PROVIDERS[cfg.providerId].label;
+  const label = `Cutting the kerf · ${cfg.model}`;
+  send({ type: "step", label, status: "running" });
 
-  const validated = KerfSchema.safeParse(rawKerf);
-  if (!validated.success) {
-    throw new Error("Model returned a malformed kerf.");
-  }
+  const { system, user } = buildKerfMessages(url, audience, { webSearch: false });
+  // 16000, not the Anthropic path's 8000: reasoning models (DeepSeek R1,
+  // GPT-5.x, Qwen thinking modes) spend completion tokens thinking before
+  // emitting the JSON, and on most compat APIs that budget comes out of
+  // the same cap. Endpoints with smaller limits clamp rather than error.
+  const text = await chatCompleteJson({
+    baseUrl: cfg.baseUrl,
+    apiKey: cfg.apiKey,
+    model: cfg.model,
+    system,
+    user,
+    maxTokens: 16000,
+    signal,
+  });
 
-  const refusal = validateMoat(validated.data);
-  if (refusal) {
-    throw new Error(refusal);
-  }
-
-  send({ type: "kerf", kerf: validated.data });
+  send({
+    type: "step",
+    label,
+    finding: `${providerLabel} runs without live web research — this kerf is cut from model knowledge. For signals with real citations, use an Anthropic key.`,
+    status: "done",
+  });
+  send({ type: "kerf", kerf: parseKerfFromText(text) });
 }
 
 /**
@@ -231,9 +294,13 @@ async function runLiveStream(
  * Cut a Kerf for {url, audience}. Streams Server-Sent Events.
  *
  * Account-free: there is no login and no API key. Live inference runs on
- * the caller's OWN Anthropic key, passed per-request as `X-Anthropic-Key`
- * (BYOK) — never stored, logged, or proxied. Without a key, pass
- * `demo: true` for canned content. A self-host operator may set a server
+ * the caller's OWN provider key (BYOK) — never stored, logged, or proxied.
+ * Any provider: `X-Provider` + `X-Api-Key` (+ optional `X-Model`,
+ * `X-Base-Url`), or the legacy `X-Anthropic-Key` alone for Anthropic.
+ * Anthropic keys get live web research; OpenAI-compatible providers
+ * (OpenAI, Gemini, Kimi, Qwen, DeepSeek, Groq, OpenRouter, Ollama,
+ * custom) run on model knowledge. Without a key, pass `demo: true` for
+ * canned content. A self-host operator may set a server
  * ANTHROPIC_API_KEY to run live for everyone hitting that instance.
  *
  * Rate limiting keys on client IP (see lib/rate-limit.ts).
@@ -279,21 +346,32 @@ export async function POST(req: Request) {
   }
   const { url, audience } = parsed.data;
   const demoRequested = parsed.data.demo === true;
-  const byokKey = extractByokKey(req);
-  const noKeyAvailable = !byokKey && !hasAnthropicKey();
+
+  // Resolve BYOK from headers (any provider). A malformed-but-explicit
+  // config (bad base URL, wrong key shape under X-Provider) is a hard 401
+  // with the reason — the caller told us what they meant, so a mismatch
+  // is theirs to fix, not ours to silently demote to demo.
+  const resolved = resolveByok(req);
+  if (!resolved.ok) {
+    return jsonResponse(401, { error: resolved.error });
+  }
+  const byok = resolved.byok;
+  const noKeyAvailable = !byok && !hasAnthropicKey();
 
   // The on-ramp is demo OR a key. If the caller asked for live inference
   // (no `demo: true`) without bringing a BYOK key, and this instance has
   // no server key either, send them back with a clear instruction. BYOK
-  // is always allowed — they pay Anthropic directly and we never hold it.
+  // is always allowed — they pay their provider directly, we never hold it.
   if (!demoRequested && noKeyAvailable) {
     return jsonResponse(401, {
       error:
-        "Live inference requires your own Anthropic key (`X-Anthropic-Key` header, BYOK) or a Claude MCP connection. For canned content, set `demo: true`.",
+        "Live inference requires your own AI provider key (BYOK). Send `X-Provider` + `X-Api-Key` " +
+        "(providers: anthropic, openai, gemini, kimi, qwen, deepseek, groq, openrouter, ollama, custom), " +
+        "or an Anthropic key alone as `X-Anthropic-Key`. For canned content, set `demo: true`.",
     });
   }
 
-  // Mode resolution. `noKeyAvailable` already includes !byokKey, so when
+  // Mode resolution. `noKeyAvailable` already includes !byok, so when
   // BYOK (or a self-host server key) is set we run live; otherwise demo.
   // kerf.box is free: live generation runs on the caller's own key (BYOK /
   // MCP) or the operator's server key on a self-host — we never charge.
@@ -320,8 +398,19 @@ export async function POST(req: Request) {
       try {
         if (useDemo) {
           await runDemoStream(send, disconnect.signal);
+        } else if (byok?.kind === "openai-compatible") {
+          await runOpenAICompatStream(url, audience, byok, send, disconnect.signal);
         } else {
-          await runLiveStream(url, audience, byokKey, send, disconnect.signal);
+          // Anthropic path: BYOK key (with optional model override) or the
+          // self-host server key when byok is null.
+          await runAnthropicStream(
+            url,
+            audience,
+            byok?.apiKey ?? null,
+            byok?.model ?? null,
+            send,
+            disconnect.signal
+          );
         }
       } catch (err) {
         // A disconnect abort is not an error — nobody is listening.

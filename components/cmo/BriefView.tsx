@@ -4,15 +4,17 @@ import { useEffect, useState } from "react";
 import KerfStage from "./BriefStage";
 import CopyModal from "./CopyModal";
 import { CopySchema, type Kerf, type CalendarEntry, type Copy } from "@/lib/schema";
+import { buildByokHeaders, defaultByokSettings, loadByokSettings, type ByokSettings } from "@/lib/byok-store";
 
 /**
- * Saved-kerf view. Account-free: reads the BYOK key from this browser's
- * localStorage so a visitor revisiting their archive can regenerate copy
- * for a saved kerf without re-pasting the key. If no key is stored, the
- * request asks for canned content via `demo: true` — a keyless request
- * without that flag would 401, and there is no login or session to fall
- * back on. This is a lighter variant of the copy flow in /app/page.tsx,
- * scoped to a kerf loaded from the archive rather than one freshly cut.
+ * Saved-kerf view. Account-free: reads the BYOK settings from this
+ * browser's localStorage (same store as /app) so a visitor revisiting
+ * their archive can regenerate copy for a saved kerf without re-entering
+ * a key. If no runnable provider config is stored, the request asks for
+ * canned content via `demo: true` — a keyless request without that flag
+ * would 401, and there is no login or session to fall back on. This is a
+ * lighter variant of the copy flow in /app/page.tsx, scoped to a kerf
+ * loaded from the archive rather than one freshly cut.
  */
 export default function KerfView({
   kerf,
@@ -29,17 +31,13 @@ export default function KerfView({
   const [copyData, setCopyData] = useState<Copy | null>(null);
   const [copyLoading, setCopyLoading] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
-  const [byokKey, setByokKey] = useState<string>("");
+  const [byok, setByok] = useState<ByokSettings>(defaultByokSettings);
 
   // Hydrate BYOK from localStorage. Reading lazily on mount keeps the
-  // component SSR-safe — localStorage is browser-only.
+  // component SSR-safe — localStorage is browser-only. loadByokSettings
+  // never throws (restrictive privacy modes fall back to defaults).
   useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem("kerfbox.byokKey") ?? "";
-      if (stored) setByokKey(stored);
-    } catch {
-      // localStorage can throw in restrictive privacy modes — silently fall back.
-    }
+    setByok(loadByokSettings());
   }, []);
 
   const generateCopy = async (entry: CalendarEntry) => {
@@ -48,15 +46,13 @@ export default function KerfView({
     setCopyError(null);
     setCopyLoading(true);
     try {
-      const key = byokKey.trim();
-      const headers: HeadersInit = { "Content-Type": "application/json" };
-      if (key) {
-        headers["X-Anthropic-Key"] = key;
-      }
+      const byokHeaders = buildByokHeaders(byok);
+      const live = Object.keys(byokHeaders).length > 0;
+      const headers: HeadersInit = { "Content-Type": "application/json", ...byokHeaders };
       const res = await fetch("/api/copy", {
         method: "POST",
         headers,
-        body: JSON.stringify(key ? { kerf, entry } : { kerf, entry, demo: true }),
+        body: JSON.stringify(live ? { kerf, entry } : { kerf, entry, demo: true }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));

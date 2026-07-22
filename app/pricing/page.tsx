@@ -6,7 +6,7 @@ export const dynamic = "force-static";
 
 export const metadata: Metadata = {
   title: "Pricing",
-  description: `${SITE_NAME} is free. Bring your own Anthropic key (BYOK) or connect it to your agent over MCP. No subscriptions, no metering, no per-seat fees.`,
+  description: `${SITE_NAME} is free. Bring a key from any AI provider (BYOK) or connect it to your agent over MCP. No subscriptions, no metering, no per-seat fees.`,
   alternates: { canonical: "/pricing" },
 };
 
@@ -18,7 +18,7 @@ const BODY = "#cfc8ba";
 const BG_2 = "#121215";
 
 const FREE_FEATURES = [
-  "Kerfs on your own Anthropic key (BYOK) — no metering by us, just your Anthropic bill",
+  "Kerfs on your own key — Claude, OpenAI, Gemini, Kimi, Qwen, DeepSeek, Groq, OpenRouter, Ollama, or any custom endpoint",
   "Or connect it to Claude over the MCP server — no key to paste",
   "Full REST API + MCP server for agents — no account, no API key",
   "Save kerfs in your browser; export & import as JSON to share",
@@ -50,10 +50,12 @@ export default function PricingPage() {
             You bring the key.
           </h1>
           <p className="text-sm leading-relaxed" style={{ color: BODY }}>
-            kerf.box runs on Anthropic. Bring your own key (or connect it to your agent
-            over MCP) and it&rsquo;s free, forever. We never charge you, and we never
-            run generation on our own key — every live run is yours, billed to your
-            Anthropic account. No subscriptions, no metering, no per-seat math.
+            kerf.box runs on whatever AI provider you already use — Claude, OpenAI,
+            Gemini, Kimi, Qwen, DeepSeek, Groq, OpenRouter, even a local Ollama.
+            Bring your own key (or connect it to your agent over MCP) and it&rsquo;s
+            free, forever. We never charge you, and we never run generation on our
+            own key — every live run is yours, billed to your own provider account.
+            No subscriptions, no metering, no per-seat math.
           </p>
         </div>
 
@@ -68,8 +70,8 @@ export default function PricingPage() {
             </span>
           </div>
           <p className="text-sm mb-6" style={{ color: MUTED }}>
-            Bring your own Anthropic key, or connect via MCP. You only ever pay
-            Anthropic for the tokens you use.
+            Bring a key from any AI provider, or connect via MCP. You only ever
+            pay your provider for the tokens you use.
           </p>
           <ul className="space-y-3 mb-8">
             {FREE_FEATURES.map((f) => (
@@ -89,10 +91,10 @@ export default function PricingPage() {
         </div>
 
         <p className="mono text-[10px] mt-12 leading-relaxed" style={{ color: MUTED }}>
-          Your Anthropic key lives only in your browser and is sent to our API as a
-          single per-request header — never stored, logged, or proxied. Building an
-          agent or self-hosting? Point the API or MCP server at your own key — we add
-          no metering (only a per-IP abuse cap); the only bill is your own Anthropic
+          Your key lives only in your browser and is sent to our API as a single
+          per-request header — never stored, logged, or proxied. Building an agent
+          or self-hosting? Point the API or MCP server at your own key — we add no
+          metering (only a per-IP abuse cap); the only bill is your own provider
           usage.{" "}
           <a href={REPO_URL} target="_blank" rel="noopener noreferrer" className="underline decoration-dotted" style={{ color: ACCENT }}>
             See the source →

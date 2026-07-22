@@ -111,7 +111,7 @@ const structuredData = {
         price: "0",
         priceCurrency: "USD",
         description:
-          "Free — runs on your own Anthropic key (BYOK); kerf.box adds no metering or markup.",
+          "Free — runs on your own AI provider key (BYOK, any provider); kerf.box adds no metering or markup.",
       },
       featureList: [
         "Cluster map of where a category competes",
@@ -140,7 +140,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   // Account-free: no auth provider wraps the tree. Pages are public and the
-  // API authorizes per-request on the caller's own Anthropic key (BYOK).
+  // API authorizes per-request on the caller's own AI provider key (BYOK).
   return (
     <html
       lang="en"

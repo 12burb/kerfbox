@@ -16,6 +16,15 @@ import {
 import { KerfSchema, CopySchema, type Kerf, type CalendarEntry, type Copy } from "@/lib/schema";
 import { readSSE } from "@/lib/sse";
 import { saveToArchive } from "@/lib/archive";
+import {
+  buildByokHeaders,
+  canRunLive,
+  defaultByokSettings,
+  loadByokSettings,
+  saveByokSettings,
+  type ByokSettings,
+} from "@/lib/byok-store";
+import { PROVIDERS } from "@/lib/providers";
 
 type Stage = "input" | "working" | "kerf";
 
@@ -23,7 +32,7 @@ export default function AppPage() {
   const [stage, setStage] = useState<Stage>("input");
   const [url, setUrl] = useState("https://linear.app");
   const [audience, setAudience] = useState("Indie SaaS founders shipping their first $1k MRR");
-  const [byokKey, setByokKey] = useState("");
+  const [byok, setByok] = useState<ByokSettings>(defaultByokSettings);
   const [researchSteps, setResearchSteps] = useState<ResearchStep[]>([]);
   const [kerf, setKerf] = useState<Kerf | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<CalendarEntry | null>(null);
@@ -60,44 +69,43 @@ export default function AppPage() {
     };
   }, []);
 
-  // Hydrate BYOK from localStorage on first mount. Saved-kerf views
-  // (`components/cmo/BriefView.tsx`) read the same key so users who set
-  // their key here once can generate copy from their archive without
-  // re-pasting it.
+  // Hydrate BYOK settings from localStorage on first mount. Saved-kerf
+  // views (`components/cmo/BriefView.tsx`) read the same store so users
+  // who configure a provider here once can generate copy from their
+  // archive without re-entering anything.
   useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem("kerfbox.byokKey") ?? "";
-      if (stored) setByokKey(stored);
-    } catch {
-      // Ignore restrictive privacy modes — works without persistence.
-    }
+    setByok(loadByokSettings());
   }, []);
 
   // Persist BYOK to the browser ONLY. This is the security model we promise
-  // users: the key lives exclusively on their own device (per-origin
-  // localStorage). It is sent to our API solely as a transient
-  // `X-Anthropic-Key` request header so the server can call Anthropic on
-  // that request — never written to our database, never logged, never
-  // proxied. We hold no copy. Clearing the field (setByokKey("")) removes it
-  // from localStorage immediately and permanently — gone forever, with
-  // nothing left on our side to leak.
+  // users: keys live exclusively on their own device (per-origin
+  // localStorage). They ride to our API solely as transient request headers
+  // (X-Provider/X-Api-Key, or X-Anthropic-Key) so the server can call the
+  // provider on that request — never written to a database, never logged,
+  // never proxied. We hold no copy. Clearing a field removes it from
+  // localStorage immediately and permanently.
+  //
+  // Skip the first run: this effect fires once with the default (empty)
+  // settings BEFORE the hydrate effect above lands its state update, and
+  // persisting that default would wipe the stored settings.
+  const hydratedRef = useRef(false);
   useEffect(() => {
-    try {
-      if (byokKey.trim()) window.localStorage.setItem("kerfbox.byokKey", byokKey.trim());
-      else window.localStorage.removeItem("kerfbox.byokKey");
-    } catch {
-      // Ignore restrictive privacy modes — the app works without persistence.
+    if (!hydratedRef.current) {
+      hydratedRef.current = true;
+      return;
     }
-  }, [byokKey]);
+    saveByokSettings(byok);
+  }, [byok]);
 
   const run = async (demoMode: boolean) => {
     if (!demoMode && (!url.trim() || !audience.trim())) {
       setError("URL and audience are both required.");
       return;
     }
-    if (!demoMode && !byokKey.trim()) {
+    if (!demoMode && !canRunLive(byok)) {
+      const label = PROVIDERS[byok.provider].label;
       setError(
-        "Add your Anthropic key (or connect via MCP) to run live — or click 'run with demo data'."
+        `Add your ${label} key (or pick another provider) to run live — or click 'run with demo data'.`
       );
       return;
     }
@@ -154,14 +162,14 @@ export default function AppPage() {
     armWatchdog();
 
     try {
-      // BYOK header is the only path to live inference. The /api/strategy
-      // route reads `x-anthropic-key`, instantiates an Anthropic client
-      // with that key, and never persists it. For demo mode the key is
-      // unused — the route returns canned content.
-      const headers: HeadersInit = { "Content-Type": "application/json" };
-      if (!demoMode && byokKey.trim()) {
-        headers["X-Anthropic-Key"] = byokKey.trim();
-      }
+      // BYOK headers are the only path to live inference. The /api/strategy
+      // route resolves X-Provider/X-Api-Key (or legacy X-Anthropic-Key),
+      // calls the chosen provider with that key, and never persists it.
+      // For demo mode no headers go out — the route returns canned content.
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+        ...(demoMode ? {} : buildByokHeaders(byok)),
+      };
 
       const res = await fetch("/api/strategy", {
         method: "POST",
@@ -177,7 +185,8 @@ export default function AppPage() {
         const apiMsg = typeof body?.error === "string" ? body.error : null;
         if (res.status === 401) {
           throw new Error(
-            apiMsg ?? "Authentication failed — paste a fresh Anthropic key or try demo mode."
+            apiMsg ??
+              `Authentication failed — check your ${PROVIDERS[byok.provider].label} key or try demo mode.`
           );
         }
         // No `if (res.status === 422)` branch here: /api/strategy opens
@@ -289,11 +298,9 @@ export default function AppPage() {
     setCopyError(null);
     setCopyLoading(true);
     try {
-      const key = byokKey.trim();
-      const headers: HeadersInit = { "Content-Type": "application/json" };
-      if (key) {
-        headers["X-Anthropic-Key"] = key;
-      }
+      const byokHeaders = buildByokHeaders(byok);
+      const live = Object.keys(byokHeaders).length > 0;
+      const headers: HeadersInit = { "Content-Type": "application/json", ...byokHeaders };
       // Keyless sessions (demo runs) must ask for canned copy explicitly —
       // without `demo: true` the route 401s with an API-level hint the UI
       // user can't act on, dead-ending the "no key needed" funnel at the
@@ -301,7 +308,7 @@ export default function AppPage() {
       const res = await fetch("/api/copy", {
         method: "POST",
         headers,
-        body: JSON.stringify(key ? { kerf, entry } : { kerf, entry, demo: true }),
+        body: JSON.stringify(live ? { kerf, entry } : { kerf, entry, demo: true }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -376,11 +383,11 @@ export default function AppPage() {
           <InputStage
             url={url}
             audience={audience}
-            byokKey={byokKey}
+            byok={byok}
             error={error}
             onUrlChange={setUrl}
             onAudienceChange={setAudience}
-            onByokKeyChange={setByokKey}
+            onByokChange={setByok}
             onRun={run}
           />
         )}
@@ -425,7 +432,7 @@ export default function AppPage() {
         className="text-center py-6 mono text-[10px] uppercase tracking-widest"
         style={{ color: MUTED }}
       >
-        kerf.box · strategy is a cut · v0.2
+        kerf.box · strategy is a cut · v0.3
       </div>
     </div>
   );

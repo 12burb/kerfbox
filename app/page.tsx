@@ -33,15 +33,19 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "What's BYOK?",
-    a: "Bring Your Own Key. You pass an Anthropic API key with each call (X-Anthropic-Key header) and pay Anthropic directly at cost. We never hold or proxy your key. This is the recommended path for agents and high-volume callers — and it's free.",
+    a: "Bring Your Own Key. You pass your own AI provider's API key with each call and pay that provider directly at cost. We never hold or proxy your key. This is the recommended path for agents and high-volume callers — and it's free.",
+  },
+  {
+    q: "Which AI providers can I use?",
+    a: "Any of them. Anthropic (Claude), OpenAI, Google Gemini, Kimi (Moonshot), Qwen (Alibaba), DeepSeek, Groq, OpenRouter, a local Ollama, or any custom OpenAI-compatible endpoint — pick the provider in the app, paste the key, done. Anthropic keys additionally run live web research with citations; every other provider cuts the kerf from model knowledge. See /help for per-provider setup.",
   },
   {
     q: "What does it cost?",
-    a: "Nothing. kerf.box is free — forever. You bring your own Anthropic key (BYOK) or connect it to Claude over MCP, and you pay Anthropic directly for the tokens you use. There's no subscription, no metering, no per-seat fee, and we never run generation on our own key.",
+    a: "Nothing. kerf.box is free — forever. You bring your own AI provider key (BYOK) or connect it to Claude over MCP, and you pay your provider directly for the tokens you use. There's no subscription, no metering, no per-seat fee, and we never run generation on our own key.",
   },
   {
     q: "Where does the research come from?",
-    a: "Live web search via Anthropic's research model. Every signal ships with citations you can click and verify. Inferences are flagged. Nothing is invented.",
+    a: "With an Anthropic key: live web search, and every signal ships with citations you can click and verify. With any other provider: the model's own knowledge of the category — still structured, still refusal-checked, but without fresh citations. Inferences are flagged. Nothing is invented.",
   },
   {
     q: "How long does one kerf take?",
@@ -49,7 +53,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Can my agent use kerf.box?",
-    a: "Yes. We ship an MCP server (npx -y kerfbox-mcp) and a public OpenAPI 3.1 spec at /api/openapi.json. Tools: cut_kerf and generate_copy. The API is open — no account, no API key. Bring your own Anthropic key (BYOK) for live runs, or call with demo:true.",
+    a: "Yes. We ship an MCP server (npx -y kerfbox-mcp) and a public OpenAPI 3.1 spec at /api/openapi.json. Tools: cut_kerf and generate_copy. The API is open — no account, no API key. Bring a key from any AI provider (BYOK) for live runs, or call with demo:true.",
   },
   {
     q: "Can I export the kerf?",
@@ -61,7 +65,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "What if my kerf is bad?",
-    a: "Generate another. We add no metering on BYOK runs — you pay only your own Anthropic bill (a per-IP abuse cap of 10 runs/hour aside). Most users iterate 2–3 times to find the cut that holds; the refusal rule tells you exactly what's missing so the next run is sharper.",
+    a: "Generate another. We add no metering on BYOK runs — you pay only your own provider's bill (a per-IP abuse cap of 10 runs/hour aside). Most users iterate 2–3 times to find the cut that holds; the refusal rule tells you exactly what's missing so the next run is sharper.",
   },
 ];
 
@@ -317,8 +321,8 @@ export default function LandingPage() {
                 same engine that powers the web app.
               </p>
               <p className="text-base leading-relaxed mb-6" style={{ color: MUTED }}>
-                No account, no API key — the API is open. You bring your own
-                Anthropic key per call (passed through, never stored), or
+                No account, no API key — the API is open. You bring a key from
+                any AI provider per call (passed through, never stored), or
                 connect over MCP. The refusal rule applies to agents too: an
                 undefendable Kerf is refused with a reason, not a hallucination
                 dressed in a deck.
@@ -350,10 +354,13 @@ export default function LandingPage() {
                 <div className="mt-5" style={{ color: ACCENT }}># or call the http api directly — no key to mint</div>
                 <div className="mt-2" style={{ color: "#f5f1e8", whiteSpace: "pre-wrap" }}>
                   {`curl -N https://kerfbox.vercel.app/api/strategy \\
-  -H "X-Anthropic-Key: sk-ant-..." \\
+  -H "X-Provider: anthropic" \\
+  -H "X-Api-Key: sk-ant-..." \\
   -H "Content-Type: application/json" \\
   -d '{"url":"https://linear.app","audience":"indie SaaS founders"}'`}
                 </div>
+                <div className="mt-5" style={{ color: ACCENT }}># any provider works — openai, gemini, kimi, qwen,</div>
+                <div style={{ color: ACCENT }}># deepseek, groq, openrouter, ollama, custom</div>
               </div>
             </div>
           </div>
@@ -422,10 +429,11 @@ export default function LandingPage() {
             It&rsquo;s free. You bring the key.
           </h2>
           <p className="text-sm mb-12 max-w-2xl" style={{ color: MUTED }}>
-            Bring your own Anthropic key — or connect kerf.box to Claude over MCP —
-            and it&rsquo;s free, forever. You pay Anthropic directly for the tokens you
-            use. No subscription, no metering, no per-seat fee. We never run generation
-            on our own key.
+            Bring a key from any AI provider — Claude, OpenAI, Gemini, Kimi, Qwen,
+            DeepSeek, Groq, OpenRouter, even a local Ollama — or connect kerf.box to
+            Claude over MCP, and it&rsquo;s free, forever. You pay your provider
+            directly for the tokens you use. No subscription, no metering, no
+            per-seat fee. We never run generation on our own key.
           </p>
           <div className="max-w-md">
             {/* FREE */}
@@ -443,7 +451,7 @@ export default function LandingPage() {
                 Pay Anthropic at cost. We charge nothing.
               </div>
               <ul className="space-y-2 text-sm mb-8 flex-1" style={{ color: MUTED }}>
-                <li>· Kerfs on your own key — no metering by us, just your Anthropic bill</li>
+                <li>· Kerfs on your own key — any AI provider, no metering by us</li>
                 <li>· Or connect to Claude over MCP — no key to paste</li>
                 <li>· Open REST API + MCP — no account, no API key</li>
                 <li>· Save in your browser · export &amp; import as JSON</li>
@@ -540,12 +548,13 @@ export default function LandingPage() {
               <span className="mono text-black font-bold text-[10px]">K</span>
             </div>
             <div className="mono text-[10px] uppercase tracking-widest" style={{ color: MUTED }}>
-              kerf.box · strategy is a cut · v0.2
+              kerf.box · strategy is a cut · v0.3
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 mono text-[10px] uppercase tracking-widest" style={{ color: MUTED }}>
             <Link href="/app">app</Link>
             <Link href="/briefs">archive</Link>
+            <Link href="/help">help</Link>
             <Link href="#mcp">api / mcp</Link>
             <Link href="/pricing">pricing</Link>
             <Link href="/privacy">privacy</Link>

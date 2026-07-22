@@ -7,15 +7,27 @@
  * the kerf.box backend.
  *
  * kerf.box is account-free: there is NO API key to issue and no login. Live
- * inference runs on your OWN Anthropic key (BYOK), passed through per call
- * and never stored by kerf.box. Without a key you can still call the tools
- * with `demo: true` for canned content.
+ * inference runs on your OWN AI provider key (BYOK) — any provider — passed
+ * through per call and never stored by kerf.box. Without a key you can still
+ * call the tools with `demo: true` for canned content.
  *
  * Optional env:
- *   KERFBOX_BYOK_ANTHROPIC_KEY — your own Anthropic key (BYOK). Required for
- *                       live (non-demo) inference. Preferred over the bare
- *                       ANTHROPIC_API_KEY so this server doesn't collide with
- *                       an Anthropic key another tool reads from the global env.
+ *   KERFBOX_BYOK_PROVIDER — which provider the key belongs to: anthropic
+ *                       (default), openai, gemini, kimi, qwen, deepseek,
+ *                       groq, openrouter, ollama, custom. Anthropic runs
+ *                       live web research with citations; everything else
+ *                       cuts from model knowledge.
+ *   KERFBOX_BYOK_API_KEY — your own key for that provider. Required for
+ *                       live (non-demo) inference on keyed providers;
+ *                       optional for ollama/custom.
+ *   KERFBOX_BYOK_MODEL — optional model override (e.g. gpt-5.1-mini).
+ *   KERFBOX_BYOK_BASE_URL — OpenAI-compatible endpoint URL; required for
+ *                       provider=custom, optional override for ollama.
+ *                       NOTE: the hosted backend can't reach your localhost —
+ *                       point KERFBOX_BASE_URL at a locally-run kerf.box for
+ *                       local models.
+ *   KERFBOX_BYOK_ANTHROPIC_KEY — legacy (≤0.2) Anthropic-only key name;
+ *                       still honored, implies provider=anthropic.
  *   ANTHROPIC_API_KEY — legacy fallback for the BYOK key (emits a warning).
  *   KERFBOX_BASE_URL  — override for self-hosted or staging; defaults to
  *                       https://kerfbox.vercel.app
@@ -49,28 +61,54 @@ const BASE_URL =
   process.env.KERFBOX_BASE_URL ??
   process.env.CMOBOX_BASE_URL ??
   "https://kerfbox.vercel.app";
-// BYOK: prefer the namespaced env (KERFBOX_BYOK_ANTHROPIC_KEY) so this
-// server doesn't collide with an unrelated Anthropic key the user has
-// in their global env for some other tool. Fall back to the bare name
-// for back-compat — but emit a one-time warning so users migrate.
-const BYOK = process.env.KERFBOX_BYOK_ANTHROPIC_KEY ?? process.env.ANTHROPIC_API_KEY;
-if (!process.env.KERFBOX_BYOK_ANTHROPIC_KEY && process.env.ANTHROPIC_API_KEY) {
+
+// BYOK config. The generic KERFBOX_BYOK_API_KEY wins; the ≤0.2
+// Anthropic-only names remain as fallbacks. All names are namespaced
+// (except the legacy ANTHROPIC_API_KEY) so this server doesn't collide
+// with keys other tools read from the global env.
+const PROVIDER = (process.env.KERFBOX_BYOK_PROVIDER ?? "anthropic").trim().toLowerCase();
+const BYOK =
+  process.env.KERFBOX_BYOK_API_KEY ??
+  process.env.KERFBOX_BYOK_ANTHROPIC_KEY ??
+  process.env.ANTHROPIC_API_KEY;
+const BYOK_MODEL = process.env.KERFBOX_BYOK_MODEL?.trim();
+const BYOK_BASE_URL = process.env.KERFBOX_BYOK_BASE_URL?.trim();
+
+if (
+  !process.env.KERFBOX_BYOK_API_KEY &&
+  !process.env.KERFBOX_BYOK_ANTHROPIC_KEY &&
+  process.env.ANTHROPIC_API_KEY
+) {
   process.stderr.write(
     "[kerfbox-mcp] using ANTHROPIC_API_KEY — please rename to " +
-      "KERFBOX_BYOK_ANTHROPIC_KEY in your MCP host config to avoid " +
+      "KERFBOX_BYOK_API_KEY in your MCP host config to avoid " +
       "colliding with other tools that read ANTHROPIC_API_KEY.\n"
   );
 }
 
-// kerf.box is account-free, so the only credential is your own Anthropic
-// key (BYOK). Without it, live inference returns 401 and only `demo: true`
+/**
+ * True when the configured provider has enough to attempt a live run.
+ * Mirrors the web app's canRunLive: keyed providers need a key; ollama
+ * runs keyless (the backend knows its default endpoint); custom needs at
+ * least a base URL. When false we send NO BYOK headers at all, so
+ * `demo: true` calls keep working (broken half-configs would 401 at the
+ * backend's header validation before the demo flag is even read).
+ */
+function canRunLive(): boolean {
+  if (PROVIDER === "anthropic") return Boolean(BYOK);
+  if (PROVIDER === "custom" && !BYOK_BASE_URL) return false;
+  return Boolean(BYOK) || PROVIDER === "ollama" || PROVIDER === "custom";
+}
+
+// kerf.box is account-free, so the only credential is your own provider
+// key (BYOK). Without one, live inference returns 401 and only `demo: true`
 // calls succeed. Warn early so a developer running interactively understands
 // why a live call might fail — but never exit: a demo-only session is valid.
-if (!BYOK) {
+if (!canRunLive()) {
   process.stderr.write(
-    "[kerfbox-mcp] no Anthropic key set (KERFBOX_BYOK_ANTHROPIC_KEY). " +
-      "Live inference will fail with 401 — set your own key for live runs, " +
-      "or call tools with demo:true for canned content.\n"
+    `[kerfbox-mcp] no usable BYOK config for provider "${PROVIDER}" — set ` +
+      "KERFBOX_BYOK_API_KEY (and KERFBOX_BYOK_PROVIDER for non-Anthropic " +
+      "keys) for live runs, or call tools with demo:true for canned content.\n"
   );
 }
 
@@ -79,9 +117,21 @@ function authHeaders(): Record<string, string> {
     "Content-Type": "application/json",
     "User-Agent": `kerfbox-mcp/${PKG.version}`,
   };
-  // BYOK is the only credential. The backend authorizes per-request on this
-  // header (or runs demo content if it's absent and demo:true was passed).
-  if (BYOK) h["X-Anthropic-Key"] = BYOK;
+  // BYOK is the only credential. The backend authorizes per-request on
+  // these headers (or serves demo content when they're absent and
+  // demo:true was passed).
+  if (!canRunLive()) return h;
+  h["X-Provider"] = PROVIDER;
+  if (BYOK_MODEL) h["X-Model"] = BYOK_MODEL;
+  if (PROVIDER === "anthropic" && BYOK) {
+    // Send the legacy header alongside X-Provider so a rolled-back
+    // backend (which only knows X-Anthropic-Key) still authorizes.
+    h["X-Anthropic-Key"] = BYOK;
+    h["X-Api-Key"] = BYOK;
+    return h;
+  }
+  if (BYOK) h["X-Api-Key"] = BYOK;
+  if (BYOK_BASE_URL) h["X-Base-Url"] = BYOK_BASE_URL;
   return h;
 }
 
@@ -249,14 +299,15 @@ const TOOLS = [
   {
     name: "cut_kerf",
     description:
-      "Cut a Kerf — the v0.2 strategic artifact. Live web research maps where " +
-      "the category clusters today (named competitors), names the narrow " +
-      "defensible cut between clusters, and ships a wedge with a structural " +
-      "moat that names a specific competitor and explains why they can't " +
-      "follow. If the moat is undefendable, the route refuses with a reason — " +
-      "the brand POV is enforced in code. Returns: {company_summary, " +
-      "cluster_map, kerf, wedge:{claim, proof, moat}, signals, concepts, " +
-      "calendar}.",
+      "Cut a Kerf — the strategic artifact. Maps where the category clusters " +
+      "today (named competitors), names the narrow defensible cut between " +
+      "clusters, and ships a wedge with a structural moat that names a " +
+      "specific competitor and explains why they can't follow. With an " +
+      "Anthropic key this runs live web research (signals carry citations); " +
+      "any other provider key cuts from model knowledge. If the moat is " +
+      "undefendable, the route refuses with a reason — the brand POV is " +
+      "enforced in code. Returns: {company_summary, cluster_map, kerf, " +
+      "wedge:{claim, proof, moat}, signals, concepts, calendar}.",
     inputSchema: {
       type: "object",
       properties: {

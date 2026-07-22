@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 };
 
 // Last substantive revision. Bump when the practices below change.
-const UPDATED = "May 2026";
+const UPDATED = "July 2026";
 
 export default function PrivacyPage() {
   return (
@@ -82,8 +82,11 @@ export default function PrivacyPage() {
             </h2>
             <ul className="space-y-2 list-disc pl-5">
               <li>
-                <strong>Your Anthropic key (BYOK).</strong> When you pass an
-                <code className="mono"> X-Anthropic-Key </code> header, it is used
+                <strong>Your AI provider key (BYOK).</strong> When you pass a key
+                — any provider, via the{" "}
+                <code className="mono">X-Provider</code> /{" "}
+                <code className="mono">X-Api-Key</code> headers or the legacy{" "}
+                <code className="mono">X-Anthropic-Key</code> header — it is used
                 for that single request and never persisted, logged, or proxied
                 anywhere we can read it. In the web app it lives only in your own
                 browser&apos;s storage; clearing the field removes it for good.
@@ -96,8 +99,8 @@ export default function PrivacyPage() {
               <li>
                 <strong>Payment details.</strong> {SITE_NAME} is free — there is
                 no subscription and we do not process payments, so we never see or
-                store a card number. You pay Anthropic directly for the inference
-                you run with your own key.
+                store a card number. You pay your AI provider directly for the
+                inference you run with your own key.
               </li>
               <li>
                 <strong>Your data, for sale.</strong> We do not sell or rent
@@ -113,10 +116,12 @@ export default function PrivacyPage() {
             </h2>
             <p>
               We rely on a deliberately small set of infrastructure providers:{" "}
-              <strong>Vercel</strong> (hosting) and <strong>Anthropic</strong>{" "}
-              (model inference). Your inputs are sent to Anthropic only to
-              generate the response you requested — billed to your own key when
-              you bring one. There is no authentication provider and no database,
+              <strong>Vercel</strong> (hosting) and{" "}
+              <strong>the AI provider you choose</strong> (model inference —
+              Anthropic, OpenAI, Google, Moonshot, Alibaba, DeepSeek, Groq,
+              OpenRouter, or your own endpoint). Your inputs are sent to that
+              provider only to generate the response you requested — billed to
+              your own key. There is no authentication provider and no database,
               because there are no accounts and we store nothing server-side.
             </p>
           </section>

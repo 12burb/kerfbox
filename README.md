@@ -9,8 +9,10 @@ emits an `error` with a reason instead of generating undefendable positioning.
 
 It's a web app, a public JSON API, and an MCP server, so a human or an agent can
 cut a kerf the same way. It is **account-free**: no login, no API key, and no
-server-side database. You bring your own Anthropic key (BYOK) for live inference,
-saved kerfs live in your browser, and you can self-host the whole thing.
+server-side database. You bring your own AI provider key (BYOK) — Anthropic,
+OpenAI, Gemini, Kimi, Qwen, DeepSeek, Groq, OpenRouter, Ollama, or any custom
+OpenAI-compatible endpoint — saved kerfs live in your browser, and you can
+self-host the whole thing.
 
 ---
 
@@ -37,8 +39,11 @@ prompt.
 - **Next.js 15** (App Router, React 19) on **Vercel**
 - **No accounts, no database** — every page is public; saved kerfs live in the
   browser's `localStorage`, with JSON export/import to move them between devices
-- **Anthropic** Claude for inference (research + copy), **BYOK** — the caller's
-  own key is passed per request and never stored, logged, or proxied
+- **Any AI provider** for inference (research + copy), **BYOK** — the caller's
+  own key is passed per request and never stored, logged, or proxied. Anthropic
+  keys get live web research with citations; OpenAI-compatible providers
+  (OpenAI, Gemini, Kimi, Qwen, DeepSeek, Groq, OpenRouter, Ollama, custom) run
+  on model knowledge with no fabricated citations
 - **Upstash Redis** (or Vercel KV) for distributed, per-IP rate limiting; falls
   back to an in-memory limiter when unconfigured
 - **MCP server** on npm as [`kerfbox-mcp`](https://www.npmjs.com/package/kerfbox-mcp), source in-repo at [`packages/mcp`](packages/mcp)
@@ -57,9 +62,9 @@ pnpm dev
 Open [http://localhost:3000](http://localhost:3000).
 
 There are no required secrets — kerf.box is account-free, so it boots with
-nothing configured. With no Anthropic key it serves demo content (callers bring
-their own key per request via BYOK), and with no Upstash config it rate-limits
-in memory. Everything below is optional.
+nothing configured. With no server key it serves demo content (callers bring
+their own AI provider key per request via BYOK), and with no Upstash config it
+rate-limits in memory. Everything below is optional.
 
 ### Environment variables
 
@@ -89,10 +94,11 @@ production these live in Vercel project settings, stored as Sensitive. See
 | --- | --- |
 | `NEXT_PUBLIC_SITE_URL` | Canonical origin for metadata/sitemap. Defaults to `https://kerfbox.vercel.app`. |
 
-> Note: the MCP server also accepts `CMOBOX_BASE_URL` as a back-compat alias for
-> `KERFBOX_BASE_URL`, and the legacy `ANTHROPIC_API_KEY` name for its BYOK key
-> (it prefers `KERFBOX_BYOK_ANTHROPIC_KEY`). New setups should use the namespaced
-> names. See [`packages/mcp`](packages/mcp).
+> Note: the MCP server takes its BYOK config from `KERFBOX_BYOK_API_KEY`,
+> `KERFBOX_BYOK_PROVIDER`, `KERFBOX_BYOK_MODEL`, and `KERFBOX_BYOK_BASE_URL`.
+> Legacy names (`KERFBOX_BYOK_ANTHROPIC_KEY`, bare `ANTHROPIC_API_KEY`, and
+> `CMOBOX_BASE_URL` for `KERFBOX_BASE_URL`) are still honored. See
+> [`packages/mcp`](packages/mcp).
 
 ---
 
@@ -102,9 +108,12 @@ Base URL: `https://kerfbox.vercel.app`. OpenAPI 3.1 spec at
 [`/api/openapi.json`](https://kerfbox.vercel.app/api/openapi.json).
 
 **The API is open** — no login and no API key. For live inference, pass your own
-Anthropic key per request via the `X-Anthropic-Key` header (BYOK); it is never
-stored, logged, or proxied anywhere readable. Or set `"demo": true` in the body
-for canned content with no key. Rate limiting is per-IP.
+AI provider key per request via the `X-Provider` + `X-Api-Key` headers (BYOK);
+it is never stored, logged, or proxied anywhere readable. Optional `X-Model`
+and `X-Base-Url` headers override the model and endpoint. The legacy
+`X-Anthropic-Key` header still works as Anthropic shorthand. Or set
+`"demo": true` in the body for canned content with no key. Rate limiting is
+per-IP.
 
 | Endpoint | Method | Description |
 | --- | --- | --- |
@@ -117,8 +126,11 @@ archive endpoints on the server.
 Example:
 
 ```bash
+# any provider works — anthropic, openai, gemini, kimi, qwen,
+# deepseek, groq, openrouter, ollama, custom
 curl -N https://kerfbox.vercel.app/api/strategy \
-  -H "X-Anthropic-Key: sk-ant-..." \
+  -H "X-Provider: anthropic" \
+  -H "X-Api-Key: sk-ant-..." \
   -H "Content-Type: application/json" \
   -d '{"url":"https://example.com","audience":"indie founders"}'
 ```
@@ -135,7 +147,8 @@ npx -y kerfbox-mcp
 ```
 
 Tools: `cut_kerf` and `generate_copy`. No API key needed; set
-`KERFBOX_BYOK_ANTHROPIC_KEY` for live inference or call with `demo: true`. See
+`KERFBOX_BYOK_API_KEY` (plus `KERFBOX_BYOK_PROVIDER` for non-Anthropic keys)
+for live inference, or call with `demo: true`. See
 [`packages/mcp`](packages/mcp) for configuration.
 
 ---
@@ -147,7 +160,8 @@ Tools: `cut_kerf` and `generate_copy`. No API key needed; set
 - The API is open and rate-limited per IP — there are no sessions, accounts, or
   stored credentials to protect.
 - BYOK keys are used for a single request and never stored or proxied; secrets
-  (`sk-ant-…`, `X-Anthropic-Key`, etc.) are scrubbed from logs.
+  (`sk-ant-…`, `sk-…`, `gsk_…`, `AIza…`, the `X-Api-Key` / `X-Anthropic-Key`
+  headers, etc.) are scrubbed from logs.
 - Security headers (CSP, `frame-ancestors`, etc.) are set in `next.config.mjs`.
 
 Found a vulnerability? Please report it via the

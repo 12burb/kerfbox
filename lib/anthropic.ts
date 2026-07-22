@@ -42,26 +42,11 @@ export function hasAnthropicKey(): boolean {
   return Boolean(serverAnthropicKey());
 }
 
-/**
- * Pull a BYOK Anthropic key from request headers. Only `X-Anthropic-Key`
- * is accepted — we deliberately do not accept `X-Api-Key` because it's
- * commonly used elsewhere (including for kerf.box's own auth in some
- * tooling) and a copy-paste mix-up would leak the wrong key to Anthropic.
- *
- * Shape check (`sk-ant-…`) is enforced so a typo'd key surfaces upstream
- * as a clean 401 instead of going to Anthropic and coming back with an
- * opaque SDK error that we'd then collapse to "Inference failed". This
- * also blocks an accidental paste of a kerf.box `cmo_live_…` key (wrong
- * service) into the wrong header.
- */
-const BYOK_SHAPE = /^sk-ant-[A-Za-z0-9_-]{20,}$/;
-export function extractByokKey(req: Request): string | null {
-  const k = req.headers.get("x-anthropic-key");
-  if (!k) return null;
-  const trimmed = k.trim();
-  if (!BYOK_SHAPE.test(trimmed)) return null;
-  return trimmed;
-}
+// BYOK header parsing lives in lib/providers.ts (resolveByok) as of the
+// multi-provider release — it handles X-Provider/X-Api-Key/X-Model/
+// X-Base-Url plus the legacy X-Anthropic-Key path, including the sk-ant-
+// shape check and the "bare X-Api-Key is ambiguous, reject it" rule that
+// used to be documented here.
 
 /**
  * Model selection. Centralized so a model rotation is a one-line edit

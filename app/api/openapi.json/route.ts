@@ -10,11 +10,11 @@ export const runtime = "nodejs";
  * even when internal Zod schemas evolve.
  *
  * The API is account-free and open: there is no login, no minted API key,
- * and no server-side persistence. Callers either bring their own Anthropic
- * key per request (`X-Anthropic-Key`, BYOK) for live inference, or pass
- * `demo: true` for canned content. Rate limiting is per-IP. Saving a Kerf
- * happens client-side in the browser (localStorage) — there are no archive
- * endpoints on the server.
+ * and no server-side persistence. Callers bring their own AI provider key
+ * per request (`X-Provider` + `X-Api-Key`, or the legacy `X-Anthropic-Key`)
+ * for live inference, or pass `demo: true` for canned content. Rate
+ * limiting is per-IP. Saving a Kerf happens client-side in the browser
+ * (localStorage) — there are no archive endpoints on the server.
  */
 export function GET(req: Request) {
   // Build the server URL from the incoming request so the spec is correct
@@ -25,15 +25,20 @@ export function GET(req: Request) {
     openapi: "3.1.0",
     info: {
       title: "kerf.box API",
-      version: "0.2.0",
+      version: "0.3.0",
       description:
         "Strategic-cut API. Map where a category clusters, find the narrow defensible " +
         "kerf between clusters, and ship a wedge with a structural moat — or surface " +
         "an in-stream `error` SSE event if the moat doesn't hold. Designed to be " +
         "called by AI agents (via MCP or directly) as well as the kerf.box web app.\n\n" +
-        "**Account-free:** no login and no API key. Pass your own Anthropic key per " +
-        "request via the `X-Anthropic-Key` header (BYOK) for live inference, or set " +
-        "`demo: true` for canned content. Rate limiting is per-IP.",
+        "**Account-free:** no login and no API key. Bring your own AI provider key " +
+        "per request (BYOK): `X-Provider` + `X-Api-Key` for any provider (anthropic, " +
+        "openai, gemini, kimi, qwen, deepseek, groq, openrouter, ollama, custom), or " +
+        "the legacy `X-Anthropic-Key` alone for Anthropic. Optional: `X-Model` " +
+        "(override the default model), `X-Base-Url` (ollama/custom endpoints). " +
+        "Anthropic keys run live web research with citations; all other providers " +
+        "cut from model knowledge (signals ship without citations). Without a key, " +
+        "set `demo: true` for canned content. Rate limiting is per-IP.",
       contact: { name: "kerf.box", url: "https://kerfbox.vercel.app" },
       // OpenAPI 3.1 prefers SPDX `identifier` over the older `name`-only form.
       license: { name: "MIT", identifier: "MIT" },
@@ -52,17 +57,24 @@ export function GET(req: Request) {
           description:
             "Streams Server-Sent Events. Events: `step` (research progress), `kerf` (final " +
             "payload), `error`. On success the final `kerf` event contains a `Kerf` object. " +
-            "Pass `X-Anthropic-Key` to bring your own Anthropic key (BYOK), or set " +
-            "`demo: true` for a canned Kerf.\n\n" +
+            "Bring your own key (BYOK): `X-Provider` + `X-Api-Key` for any provider, or " +
+            "`X-Anthropic-Key` alone for Anthropic — or set `demo: true` for a canned Kerf.\n\n" +
             "**Error semantics:** The route opens the SSE stream on the first byte, so the " +
             "HTTP status is 200 for both success and refusal. Clients MUST branch on the " +
             "SSE event `type`, not the HTTP status, to detect failure. The only non-200 " +
-            "responses are pre-stream errors: 400 (malformed request), 401 (no Anthropic " +
-            "key and `demo` not set), 413 (body over 512 KB), 429 (rate limit).\n\n" +
+            "responses are pre-stream errors: 400 (malformed request), 401 (no provider " +
+            "key and `demo` not set, or a malformed BYOK config), 413 (body over 512 KB), " +
+            "429 (rate limit).\n\n" +
             "**Refusal rule:** if `wedge.moat` does not name a competitor from " +
             "`cluster_map` and give a structural reason, the route emits an `error` event " +
             "with a 'Kerf rejected' message. Re-run with sharper inputs.",
-          parameters: [{ $ref: "#/components/parameters/AnthropicKeyHeader" }],
+          parameters: [
+            { $ref: "#/components/parameters/ProviderHeader" },
+            { $ref: "#/components/parameters/ApiKeyHeader" },
+            { $ref: "#/components/parameters/ModelHeader" },
+            { $ref: "#/components/parameters/BaseUrlHeader" },
+            { $ref: "#/components/parameters/AnthropicKeyHeader" },
+          ],
           requestBody: {
             required: true,
             content: {
@@ -92,7 +104,13 @@ export function GET(req: Request) {
           tags: ["copy"],
           operationId: "generateCopy",
           summary: "Generate platform copy for one calendar entry",
-          parameters: [{ $ref: "#/components/parameters/AnthropicKeyHeader" }],
+          parameters: [
+            { $ref: "#/components/parameters/ProviderHeader" },
+            { $ref: "#/components/parameters/ApiKeyHeader" },
+            { $ref: "#/components/parameters/ModelHeader" },
+            { $ref: "#/components/parameters/BaseUrlHeader" },
+            { $ref: "#/components/parameters/AnthropicKeyHeader" },
+          ],
           requestBody: {
             required: true,
             content: {
@@ -149,16 +167,69 @@ export function GET(req: Request) {
     },
     components: {
       parameters: {
+        ProviderHeader: {
+          in: "header",
+          name: "X-Provider",
+          required: false,
+          schema: {
+            type: "string",
+            enum: [
+              "anthropic",
+              "openai",
+              "gemini",
+              "kimi",
+              "qwen",
+              "deepseek",
+              "groq",
+              "openrouter",
+              "ollama",
+              "custom",
+            ],
+          },
+          description:
+            "Which AI provider the accompanying `X-Api-Key` belongs to. Required whenever " +
+            "`X-Api-Key` is sent — a bare `X-Api-Key` with no provider is rejected (401) " +
+            "so a key never lands on the wrong provider. Anthropic runs live web research " +
+            "with citations; all other providers cut from model knowledge.",
+        },
+        ApiKeyHeader: {
+          in: "header",
+          name: "X-Api-Key",
+          required: false,
+          schema: { type: "string" },
+          description:
+            "Your own API key for the provider named in `X-Provider` (BYOK). Used for " +
+            "that single request and never stored, logged, or proxied. Optional for " +
+            "`ollama` and keyless `custom` endpoints.",
+        },
+        ModelHeader: {
+          in: "header",
+          name: "X-Model",
+          required: false,
+          schema: { type: "string" },
+          description:
+            "Optional model override (e.g. `gpt-5.1-mini`, `claude-opus-4-8`). Omit to " +
+            "use the provider's default.",
+        },
+        BaseUrlHeader: {
+          in: "header",
+          name: "X-Base-Url",
+          required: false,
+          schema: { type: "string", format: "uri" },
+          description:
+            "OpenAI-compatible endpoint base URL — required for `custom`, optional " +
+            "override for `ollama`. http(s) only; private/loopback hosts are rejected " +
+            "on the hosted instance (run kerf.box locally for localhost endpoints).",
+        },
         AnthropicKeyHeader: {
           in: "header",
           name: "X-Anthropic-Key",
           required: false,
           schema: { type: "string" },
           description:
-            "Bring your own Anthropic key (BYOK). When present, inference runs on this " +
-            "key and it is never stored, logged, or proxied. Required for live inference " +
-            "unless the instance is self-hosted with a server-side Anthropic key, or you " +
-            "pass `demo: true`.",
+            "Legacy Anthropic shorthand (BYOK): an `sk-ant-...` key sent alone implies " +
+            "`X-Provider: anthropic`. Never stored, logged, or proxied. Prefer " +
+            "`X-Provider` + `X-Api-Key` for new integrations.",
         },
       },
       responses: {
@@ -170,9 +241,11 @@ export function GET(req: Request) {
         },
         Unauthorized: {
           description:
-            "Live inference was requested but no Anthropic key was provided (no " +
-            "`X-Anthropic-Key` header, and no server key on this instance) and `demo` " +
-            "was not set. Pass a BYOK key or set `demo: true`.",
+            "Live inference was requested but no usable provider key was resolved: no " +
+            "BYOK headers (and no server key on this instance) with `demo` unset, a " +
+            "bare `X-Api-Key` without `X-Provider`, an unknown provider id, a malformed " +
+            "key/model, or an invalid `X-Base-Url`. The `error` message says which. " +
+            "Pass `X-Provider` + `X-Api-Key` or set `demo: true`.",
           content: {
             "application/json": { schema: { $ref: "#/components/schemas/Error" } },
           },

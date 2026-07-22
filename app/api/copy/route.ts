@@ -1,7 +1,8 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { CopyRequestSchema, CopySchema } from "@/lib/schema";
-import { extractByokKey, getAnthropic, hasAnthropicKey, COPY_MODEL } from "@/lib/anthropic";
+import { getAnthropic, hasAnthropicKey, COPY_MODEL } from "@/lib/anthropic";
+import { resolveByok, chatCompleteJson, PROVIDER_ERROR_PREFIX } from "@/lib/providers";
 import { buildCopyMessages } from "@/lib/prompts";
 import { DEMO_COPY } from "@/lib/demo";
 import { enforceBodyLimit, readJsonBodyWithLimit, sanitizeForLog } from "@/lib/api-auth";
@@ -17,8 +18,9 @@ export const maxDuration = 30;
  * Generate platform-ready copy for one calendar entry.
  *
  * Account-free: no login, no API key. Live inference runs on the caller's
- * own Anthropic key via the `X-Anthropic-Key` header (BYOK) — never stored
- * or logged. Without a key, pass `demo: true`. Self-host operators may set
+ * own provider key (BYOK): `X-Provider` + `X-Api-Key` for any provider,
+ * or the legacy `X-Anthropic-Key` alone for Anthropic — never stored or
+ * logged. Without a key, pass `demo: true`. Self-host operators may set
  * a server ANTHROPIC_API_KEY. Rate limiting keys on client IP.
  *
  * Body: { kerf: Kerf, entry: CalendarEntry, demo?: boolean }
@@ -63,8 +65,15 @@ export async function POST(req: Request) {
     );
   }
   const demoRequested = parsed.data.demo === true;
-  const byokKey = extractByokKey(req);
-  const noKeyAvailable = !byokKey && !hasAnthropicKey();
+
+  // Resolve BYOK from headers (any provider). Explicit-but-broken configs
+  // (bad base URL, wrong key shape under X-Provider) 401 with the reason.
+  const resolved = resolveByok(req);
+  if (!resolved.ok) {
+    return NextResponse.json({ error: resolved.error }, { status: 401 });
+  }
+  const byok = resolved.byok;
+  const noKeyAvailable = !byok && !hasAnthropicKey();
 
   // On-ramp is demo OR a key. If the caller asked for live copy without a
   // BYOK key and this instance has no server key, return a clear 401.
@@ -72,7 +81,9 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error:
-          "Live inference requires your own Anthropic key (`X-Anthropic-Key` header, BYOK) or a Claude MCP connection. For canned content, set `demo: true`.",
+          "Live inference requires your own AI provider key (BYOK). Send `X-Provider` + `X-Api-Key` " +
+          "(providers: anthropic, openai, gemini, kimi, qwen, deepseek, groq, openrouter, ollama, custom), " +
+          "or an Anthropic key alone as `X-Anthropic-Key`. For canned content, set `demo: true`.",
       },
       { status: 401 }
     );
@@ -86,26 +97,42 @@ export async function POST(req: Request) {
   }
 
   try {
-    const client = getAnthropic(byokKey);
     const { system, user } = buildCopyMessages(entry, kerf);
-    // System prompt is stable across the ~7 calls a session makes
-    // (one per calendar entry). Cache it so we only pay full-rate
-    // input cost on the first call within the 5-minute TTL — Haiku
-    // is already cheap, but the prompt-caching discount stacks and
-    // the cache lookup is free.
-    const response = await client.messages.create({
-      model: COPY_MODEL,
-      max_tokens: 1500,
-      system: [
-        { type: "text", text: system, cache_control: { type: "ephemeral" } },
-      ] as unknown as Anthropic.TextBlockParam[],
-      messages: [{ role: "user", content: user }],
-    });
+    let text: string;
 
-    const text = response.content
-      .filter((b): b is Extract<typeof b, { type: "text" }> => b.type === "text")
-      .map((b) => b.text)
-      .join("");
+    if (byok?.kind === "openai-compatible") {
+      // Any OpenAI-compatible provider. Copy is a short JSON blob, but
+      // reasoning models spend completion tokens thinking first — 4000
+      // leaves room for both on the same cap.
+      text = await chatCompleteJson({
+        baseUrl: byok.baseUrl,
+        apiKey: byok.apiKey,
+        model: byok.model,
+        system,
+        user,
+        maxTokens: 4000,
+      });
+    } else {
+      const client = getAnthropic(byok?.apiKey ?? null);
+      // System prompt is stable across the ~7 calls a session makes
+      // (one per calendar entry). Cache it so we only pay full-rate
+      // input cost on the first call within the 5-minute TTL — Haiku
+      // is already cheap, but the prompt-caching discount stacks and
+      // the cache lookup is free.
+      const response = await client.messages.create({
+        model: byok?.model ?? COPY_MODEL,
+        max_tokens: 1500,
+        system: [
+          { type: "text", text: system, cache_control: { type: "ephemeral" } },
+        ] as unknown as Anthropic.TextBlockParam[],
+        messages: [{ role: "user", content: user }],
+      });
+
+      text = response.content
+        .filter((b): b is Extract<typeof b, { type: "text" }> => b.type === "text")
+        .map((b) => b.text)
+        .join("");
+    }
     const extracted = extractJsonObject(text);
 
     let rawCopy: unknown;
@@ -125,8 +152,14 @@ export async function POST(req: Request) {
   } catch (err) {
     // Log the full error server-side (with secret scrubbing) and return
     // a generic message. SDK error strings can include org IDs, request
-    // IDs, partial prompt fragments — none of which clients need.
+    // IDs, partial prompt fragments — none of which clients need. The one
+    // exception: provider errors built by chatCompleteJson (status +
+    // scrubbed provider message) pass through verbatim, because "model
+    // not found" is exactly what a BYOK caller needs to see to fix it.
     console.error("[/api/copy] failed", sanitizeForLog(err));
+    if (err instanceof Error && err.message.startsWith(PROVIDER_ERROR_PREFIX)) {
+      return NextResponse.json({ error: err.message }, { status: 502 });
+    }
     return NextResponse.json(
       { error: "Inference failed. Please retry." },
       { status: 500 }

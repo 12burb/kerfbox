@@ -6,8 +6,9 @@ import { NextResponse } from "next/server";
  *
  * kerf.box is account-free: there are no sessions, no minted API keys, and
  * no server-side identity to resolve. Every request authorizes on the
- * caller's OWN Anthropic key (BYOK) via the `X-Anthropic-Key` header, or
- * runs in demo mode. The route handlers do that check inline; this module
+ * caller's OWN provider key (BYOK) via the `X-Provider` + `X-Api-Key`
+ * headers (or the legacy `X-Anthropic-Key`), or runs in demo mode. The
+ * route handlers do that check inline via lib/providers.ts; this module
  * only carries the cross-cutting guards that survive that model:
  *
  *   • enforceBodyLimit      — cheap declared-length rejection.
@@ -129,6 +130,13 @@ export function sanitizeForLog(value: unknown): unknown {
   }
   return str
     .replace(/sk-ant-[A-Za-z0-9_-]+/g, "sk-ant-[REDACTED]")
+    // Multi-provider BYOK (v0.3): the generic `sk-` prefix covers OpenAI,
+    // OpenRouter (sk-or-v1-…), Kimi/Moonshot, Qwen/DashScope, and DeepSeek
+    // keys; gsk_ is Groq; AIza is a Google API key. The 8+ floor keeps
+    // ordinary prose like "sk-launch" from being eaten.
+    .replace(/sk-[A-Za-z0-9_-]{8,}/g, "sk-[REDACTED]")
+    .replace(/gsk_[A-Za-z0-9_-]{8,}/g, "gsk_[REDACTED]")
+    .replace(/AIza[A-Za-z0-9_-]{10,}/g, "AIza[REDACTED]")
     .replace(/cmo_(live|test)_[A-Za-z0-9]+/g, "cmo_$1_[REDACTED]")
     // Optionally swallow a `Bearer`/`Basic` scheme word so the token after
     // it is redacted too — without this, "Authorization: Bearer abc" would

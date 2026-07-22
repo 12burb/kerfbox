@@ -1,5 +1,5 @@
 {
-  "name": "@kerfbox/mcp",
+  "name": "kerfbox-mcp",
   "version": "0.2.0",
   "description": "MCP server for kerf.box — cut the narrow defensible kerf between where a category clusters and where this brand can stand alone.",
   "license": "MIT",

@@ -1,4 +1,4 @@
-# @kerfbox/mcp
+# kerfbox-mcp
 
 MCP server for [kerf.box](https://kerfbox.vercel.app) — strategy is a cut, not a story.
 
@@ -55,7 +55,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`
   "mcpServers": {
     "kerfbox": {
       "command": "npx",
-      "args": ["-y", "@kerfbox/mcp"],
+      "args": ["-y", "kerfbox-mcp"],
       "env": {
         "KERFBOX_BYOK_ANTHROPIC_KEY": "sk-ant-..."
       }
@@ -76,7 +76,7 @@ Add to `.cursor/mcp.json` in your project (or globally):
   "mcpServers": {
     "kerfbox": {
       "command": "npx",
-      "args": ["-y", "@kerfbox/mcp"],
+      "args": ["-y", "kerfbox-mcp"],
       "env": {
         "KERFBOX_BYOK_ANTHROPIC_KEY": "sk-ant-..."
       }
@@ -98,7 +98,7 @@ for await (const message of query({
     mcpServers: {
       kerfbox: {
         command: "npx",
-        args: ["-y", "@kerfbox/mcp"],
+        args: ["-y", "kerfbox-mcp"],
         env: {
           KERFBOX_BYOK_ANTHROPIC_KEY: process.env.KERFBOX_BYOK_ANTHROPIC_KEY!,
         },

@@ -49,7 +49,7 @@ const FAQ: { q: string; a: string }[] = [
   },
   {
     q: "Can my agent use kerf.box?",
-    a: "Yes. We ship an MCP server (npx -y @kerfbox/mcp) and a public OpenAPI 3.1 spec at /api/openapi.json. Tools: cut_kerf and generate_copy. The API is open — no account, no API key. Bring your own Anthropic key (BYOK) for live runs, or call with demo:true.",
+    a: "Yes. We ship an MCP server (npx -y kerfbox-mcp) and a public OpenAPI 3.1 spec at /api/openapi.json. Tools: cut_kerf and generate_copy. The API is open — no account, no API key. Bring your own Anthropic key (BYOK) for live runs, or call with demo:true.",
   },
   {
     q: "Can I export the kerf?",
@@ -340,7 +340,7 @@ export default function LandingPage() {
               >
                 <div style={{ color: ACCENT }}># add to claude desktop / cursor / your agent</div>
                 <div className="mt-3" style={{ color: "#f5f1e8" }}>
-                  npx -y @kerfbox/mcp
+                  npx -y kerfbox-mcp
                 </div>
                 <div className="mt-5" style={{ color: ACCENT }}># tools available to your agent</div>
                 <div className="mt-2 space-y-1" style={{ color: "#f5f1e8" }}>

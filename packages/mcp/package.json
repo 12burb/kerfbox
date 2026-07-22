@@ -40,11 +40,11 @@
   },
   "homepage": "https://kerfbox.vercel.app",
   "bugs": {
-    "url": "https://github.com/12burb/cmoinabox/issues"
+    "url": "https://github.com/12burb/kerfbox/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/12burb/cmoinabox.git",
+    "url": "git+https://github.com/12burb/kerfbox.git",
     "directory": "packages/mcp"
   }
 }

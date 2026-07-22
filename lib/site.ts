@@ -24,7 +24,7 @@ export const SITE_DESCRIPTION =
  * the GitHub issue tracker rather than a personal inbox — no private email
  * ever lands in shipped markup or structured data.
  */
-export const REPO_URL = "https://github.com/12burb/cmoinabox";
+export const REPO_URL = "https://github.com/12burb/kerfbox";
 export const ISSUES_URL = `${REPO_URL}/issues`;
 
 /** Keyword set for <meta keywords> and structured data. */

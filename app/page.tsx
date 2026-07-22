@@ -551,7 +551,7 @@ export default function LandingPage() {
             <Link href="/privacy">privacy</Link>
             <Link href="/terms">terms</Link>
             <a
-              href="https://github.com/12burb/cmoinabox/issues"
+              href="https://github.com/12burb/kerfbox/issues"
               target="_blank"
               rel="noopener noreferrer"
             >

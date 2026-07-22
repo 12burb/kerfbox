@@ -151,7 +151,7 @@ Tools: `cut_kerf` and `generate_copy`. No API key needed; set
 - Security headers (CSP, `frame-ancestors`, etc.) are set in `next.config.mjs`.
 
 Found a vulnerability? Please report it via the
-[issue tracker](https://github.com/12burb/cmoinabox/issues).
+[issue tracker](https://github.com/12burb/kerfbox/issues).
 
 ---
 
